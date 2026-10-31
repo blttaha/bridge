@@ -1,0 +1,59 @@
+name: Linux sandbox
+
+# Runs the Linux agent (server.js + linux/bridge.js) inside a virtual X server and drives it like the phone.
+on:
+  push:
+    paths:
+      - 'pc-agent/**'
+      - 'tests/linux/**'
+      - '.github/workflows/linux-sandbox.yml'
+  workflow_dispatch:
+
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DISPLAY: ':99'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install desktop tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb openbox xdotool wmctrl x11-xserver-utils x11-utils x11-apps xclip \
+            pulseaudio pulseaudio-utils playerctl ffmpeg
+
+      - name: Unit tests (mocked tools)
+        run: node tests/linux/run.js
+
+      - name: Install agent dependencies
+        working-directory: pc-agent
+        run: npm ci --omit=dev || npm install --omit=dev
+
+      - name: Start virtual desktop
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &
+          for i in $(seq 1 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.1; done
+          # wmctrl needs an EWMH window manager
+          openbox &
+          sleep 1
+          # Moving test pattern so the encoder has real motion to compress
+          ffplay -loglevel error -f lavfi -i testsrc2=size=800x600:rate=30 -window_title bridge-testsrc -an >/tmp/ffplay.log 2>&1 &
+          xclock -update 1 &
+          pulseaudio --start --exit-idle-time=-1 || echo "pulseaudio unavailable, audio checks use the fallback shape"
+          # Wake-on-LAN check listens on UDP 9 as a normal user
+          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+          sleep 2
+          xrandr --query
+          wmctrl -lpG || true
+
+      - name: Sandbox end-to-end test
+        env:
+          E2E_EXPECT_WINDOW: '1'
+        run: node tests/linux/sandbox-e2e.js

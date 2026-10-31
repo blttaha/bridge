@@ -1,0 +1,14 @@
+[Unit]
+Description=Bridge PC agent
+After=graphical-session.target network-online.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=@NODE_BIN@ @APP_DIR@/server.js
+Restart=on-failure
+RestartSec=3
+# The bridge needs the desktop session's display and audio
+PassEnvironment=DISPLAY XAUTHORITY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS XDG_SESSION_TYPE
+
+[Install]
+WantedBy=graphical-session.target default.target

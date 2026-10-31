@@ -1,0 +1,23 @@
+# Node dependencies
+node_modules/
+pc-agent/node_modules/
+
+# Local runtime & private device state (NEVER commit)
+pc-agent/data/
+pc-agent/native/clipboard_history.json
+**/clipboard_history.json
+**/config.json
+**/runtime-status.json
+
+# Temporary build outputs
+mobile-app/android/build/
+mobile-app/android/assets/
+pc-agent/bin/
+*.idsig
+*.log
+.DS_Store
+Thumbs.db
+
+# APK signing keystore (secret)
+*.keystore
+*.jks

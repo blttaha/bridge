@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">
+  <defs>
+    <linearGradient id="darkBg" x1="0" y1="0" x2="1000" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#181A22"/>
+      <stop offset="100%" stop-color="#0D0F14"/>
+    </linearGradient>
+    <linearGradient id="lightBg" x1="0" y1="0" x2="1000" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F1F5F9"/>
+    </linearGradient>
+    <linearGradient id="phoneGrad" x1="555" y1="235" x2="945" y2="945" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#18181B"/>
+      <stop offset="100%" stop-color="#09090B"/>
+    </linearGradient>
+    <linearGradient id="bar1Grad" x1="235" y1="368" x2="790" y2="462" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E4E4E7"/>
+    </linearGradient>
+    <linearGradient id="bar2Grad" x1="325" y1="502" x2="790" y2="596" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A1A1AA"/>
+      <stop offset="100%" stop-color="#71717A"/>
+    </linearGradient>
+    <clipPath id="monClip">
+      <rect x="55" y="55" width="675" height="575" rx="86"/>
+    </clipPath>
+  </defs>
+  <g transform="translate(500 500) scale(1.115) translate(-500 -500)">
+    <rect x="305" y="600" width="140" height="185" rx="32" fill="#000000"/>
+    <rect x="195" y="742" width="345" height="86" rx="43" fill="#000000"/>
+    <g clip-path="url(#monClip)">
+      <rect x="55" y="55" width="675" height="175" fill="#7C7C86"/>
+      <rect x="55" y="230" width="675" height="200" fill="#4C4C54"/>
+      <rect x="55" y="430" width="675" height="200" fill="#2E2E34"/>
+    </g>
+    <rect x="535" y="248" width="400" height="697" rx="86" fill="#000000" fill-opacity="0.25"/>
+    <rect x="555" y="235" width="390" height="710" rx="86" fill="url(#phoneGrad)"/>
+    <rect x="235" y="383" width="555" height="94" rx="47" fill="#000000" fill-opacity="0.20"/>
+    <rect x="235" y="368" width="555" height="94" rx="47" fill="url(#bar1Grad)"/>
+    <rect x="325" y="517" width="465" height="94" rx="47" fill="#000000" fill-opacity="0.20"/>
+    <rect x="325" y="502" width="465" height="94" rx="47" fill="url(#bar2Grad)"/>
+  </g>
+</svg>

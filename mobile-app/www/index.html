@@ -1,0 +1,1679 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#09090B" />
+  <title>Bridge</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="shortcut icon" href="favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- TOP ARCHITECTURAL BAR: MULTI-PC SWITCHER -->
+    <header class="topbar" id="appTopbar">
+      <button type="button" class="icon-btn topbar-home-btn" id="homeHubBtn" title="Cihaz Merkezi (Ana Sayfa)" aria-label="Cihaz Merkezi">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M3 8.5L10 3l7 5.5V17a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8.5z" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M7 18v-7h6v7" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+
+      <button type="button" class="device-selector-btn" id="openDeviceSheetBtn" aria-label="Cihaz Seçici">
+        <span class="status-indicator" id="connStatusDot" data-state="offline"></span>
+        <div class="device-selector-meta">
+          <div class="device-selector-title-row">
+            <span class="device-name" id="activeDeviceName">Bridge</span>
+            <svg class="icon-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 6l4 4 4-4" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+          <div class="device-telemetry-row">
+            <span class="mono-stat" id="connRouteBadge">HAZIR</span>
+            <span class="telemetry-sep" id="connMonitorsSep" style="display:none;">·</span>
+            <span class="mono-stat" id="connMonitorsBadge" style="display:none;">2 Ekran</span>
+          </div>
+        </div>
+      </button>
+
+      <div class="topbar-actions">
+        <button type="button" class="icon-btn" id="auditLogBtn" title="Denetim Kaydı" aria-label="Denetim Kaydı">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.25L5 6.25v5.25c0 4.6 3.05 8.1 7 9.25 3.95-1.15 7-4.65 7-9.25V6.25L12 3.25z"/>
+            <path d="M12 8v4l2.5 1.5"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN VIEWPORT -->
+    <main class="main-viewport" id="mainViewport">
+      <!-- =====================================================================
+           STATE 1: STANDALONE DEVICE HUB (Shown on Home or when no PC is paired yet)
+           ===================================================================== -->
+      <section class="standalone-view" id="view-device-hub">
+        <div class="hub-tabs-track" id="hubTabsTrack">
+          <!-- HUB TAB 1: CİHAZLAR (KAYITLI BİLGİSAYARLAR & 8 HANELİ GÜVENLİK KODU EŞLEŞTİRME) -->
+          <div class="hub-tab-panel active" id="hub-tab-devices">
+            <div class="section-block hidden" id="hubSavedDevicesSection">
+              <div class="section-header-stack">
+                <div class="section-header-top">
+                  <h2 class="section-title">Kayıtlı ve Aktif Bilgisayarlar</h2>
+                </div>
+                <p class="section-subtitle">Bağlanmak için dokunun, cihaz detayları ve yönetim için basılı tutun</p>
+              </div>
+              <div class="saved-devices-list" id="hubSavedDevicesList"></div>
+            </div>
+
+            <div class="section-block">
+              <form class="pair-form" id="hubPairForm">
+                <h2 class="section-title">Güvenlik Kodu ile Bilgisayar Eşleştir</h2>
+                <p class="section-subtitle">
+                  Bilgisayarınızın görev çubuğundaki Bridge simgesine sağ tıklayıp <strong>"Bağlantı Kur (30 sn Kod Oluştur)"</strong> seçeneğine basın ve verilen 30 saniyelik 8 haneli kodu girin.
+                </p>
+                <div class="form-group">
+                  <label class="form-label" for="hubPinInput">8 Haneli Güvenlik Kodu (XXXX-XXXX)</label>
+                  <input
+                    type="text"
+                    id="hubPinInput"
+                    class="input-field mono-input pin-code-hero-input"
+                    placeholder="Örn: K7M9-P4X2"
+                    maxlength="16"
+                    autocapitalize="characters"
+                    autocomplete="off"
+                    spellcheck="false"
+                    required
+                  />
+                </div>
+                <button type="submit" class="btn-primary btn-full">Cihazı Eşleştir ve Bağlan</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- HUB TAB 2: UYGULAMA AYARLARI (KİŞİSELLEŞTİRME, BİLDİRİM PANELİ, GÜVENLİK) -->
+          <div class="hub-tab-panel" id="hub-tab-settings">
+            <div class="section-block">
+              <div class="section-header-stack">
+                <div class="section-header-top">
+                  <h1 class="section-title-lg">Uygulama Ayarları</h1>
+                </div>
+                <p class="section-subtitle">Kişiselleştirme, bildirim paneli entegrasyonu ve bağlantı tercihleri</p>
+              </div>
+
+              <!-- Ayarlar Bölüm 1: Bildirimler ve Medya -->
+              <div class="settings-group-card">
+                <div class="settings-group-header">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M10 2a6 6 0 0 0-6 6v3.586l-.707.707A1 1 0 0 0 4 14h12a1 1 0 0 0 .707-1.707L16 11.586V8a6 6 0 0 0-6-6zM10 18a2 2 0 0 0 2-2H8a2 2 0 0 0 2 2z"/>
+                  </svg>
+                  <span class="settings-group-title">Bildirimler ve Medya</span>
+                </div>
+
+                <div class="setting-toggle-row">
+                  <div class="setting-meta">
+                    <span class="setting-title">Bildirim Panelinde Medya Oynatıcı</span>
+                    <span class="setting-desc">PC'de çalan müzik ve durdurma butonları telefonun bildirim çubuğunda görünsün</span>
+                  </div>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="settingMediaNotification" checked />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="setting-toggle-row">
+                  <div class="setting-meta">
+                    <span class="setting-title">Bağlantı Durum Bildirimleri</span>
+                    <span class="setting-desc">Cihaz bağlandığında veya bağlantı koptuğunda bildirim al</span>
+                  </div>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="settingConnNotification" checked />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Ayarlar Bölüm 2: Uzaktan Masaüstü -->
+              <div class="settings-group-card">
+                <div class="settings-group-header">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M4 7V4h3M16 7V4h-3M4 13v3h3M16 13v3h-3" stroke-linecap="round" stroke-linejoin="round" />
+                    <circle cx="10" cy="10" r="2" />
+                  </svg>
+                  <span class="settings-group-title">Uzaktan Masaüstü Tercihleri</span>
+                </div>
+
+                <div class="setting-toggle-row">
+                  <div class="setting-meta">
+                    <span class="setting-title">Hızlı Çift Tıkla Büyütme</span>
+                    <span class="setting-desc">Ekrana çift dokunulduğunda o noktaya odaklan</span>
+                  </div>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="settingDoubleTapZoom" checked />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="function-pref-row">
+                  <div class="setting-meta">
+                    <span class="setting-title">Video Codec'i</span>
+                    <span class="setting-desc">AV1 aynı bant genişliğinde daha net görüntü verir; PC'de AV1 kodlayıcı (ör. RTX 40) ve telefonda AV1 çözücü gerekir</span>
+                  </div>
+                  <select class="input-field" id="settingVideoCodec">
+                    <option value="auto">Otomatik (telefon destekliyorsa AV1)</option>
+                    <option value="av1">AV1</option>
+                    <option value="h264">H.264</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Ayarlar Bölüm 3: Sistem & Haptik -->
+              <div class="settings-group-card">
+                <div class="settings-group-header">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M12 2a4 4 0 0 0-4 4v1.5a1 1 0 0 1-1 1H5.5A3.5 3.5 0 0 0 2 12a3.5 3.5 0 0 0 3.5 3.5H7a1 1 0 0 1 1 1V18a4 4 0 0 0 4 4 4 4 0 0 0 4-4v-1.5a1 1 0 0 1 1-1h1.5A3.5 3.5 0 0 0 21 12a3.5 3.5 0 0 0-3.5-3.5H16a1 1 0 0 1-1-1V6a4 4 0 0 0-4-4z"/>
+                  </svg>
+                  <span class="settings-group-title">Haptik & Bağlantı Motoru</span>
+                </div>
+
+                <div class="setting-toggle-row">
+                  <div class="setting-meta">
+                    <span class="setting-title">Titreşimli Geri Bildirim</span>
+                    <span class="setting-desc">Buton ve eylem dokunuşlarında dokunsal titreşim üret</span>
+                  </div>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="settingHapticFeedback" checked />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="setting-toggle-row">
+                  <div class="setting-meta">
+                    <span class="setting-title">Otomatik Arka Planda Yeniden Bağlan</span>
+                    <span class="setting-desc">Ağ değiştiğinde veya bağlantı kesildiğinde sessizce yeniden dene</span>
+                  </div>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="settingAutoReconnect" checked />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Ayarlar Bölüm 4: Güvenlik & Denetim -->
+              <div class="settings-group-card">
+                <div class="settings-group-header">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M10 2L3 5v6c0 5 3.5 8.5 7 9 3.5-.5 7-4 7-9V5l-7-3z"/>
+                  </svg>
+                  <span class="settings-group-title">Güvenlik ve Denetim</span>
+                </div>
+
+                <div class="setting-action-row">
+                  <div class="setting-meta">
+                    <span class="setting-title">Denetim Kaydını Sıfırla</span>
+                    <span class="setting-desc">Cihaz bağlantı ve işlem geçmişini temizler</span>
+                  </div>
+                  <button type="button" class="btn-compact btn-secondary" id="btnClearAuditLogSetting">Kaydı Temizle</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           STATE 2: OFFLINE / POWER-ON CONSOLE (Shown when selected PC is off/unreachable)
+           ===================================================================== -->
+      <section class="standalone-view hidden" id="view-device-offline">
+        <div class="power-console-card">
+          <div class="power-status-row">
+            <span class="power-status-pill" id="offlineStateBadge">ÇEVRİMDIŞI · KAPALI VEYA UYKUDA</span>
+            <span class="mono-stat" id="offlineDeviceMac">MAC: --</span>
+          </div>
+
+          <h1 class="power-device-title" id="offlineDeviceTitle">Bilgisayar</h1>
+          <p class="power-device-sub" id="offlineDeviceSub">
+            Cihaz şu an yerel ağ veya mobil veri tüneli üzerinden yanıt vermiyor. Bilgisayar kapalıysa veya uyku modundaysa doğrudan ağ paketiyle açabilirsiniz.
+          </p>
+
+          <!-- PRIMARY POWER ON TRIGGER -->
+          <button type="button" class="power-on-hero-btn" id="powerOnMainBtn">
+            <svg class="power-on-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M12 3v9" stroke-linecap="round" />
+              <path d="M17.66 6.34a8 8 0 1 1-11.32 0" stroke-linecap="round" />
+            </svg>
+            <div class="power-on-text-col">
+              <span class="power-on-label" id="powerOnBtnLabel">Bilgisayarı Aç (Power On)</span>
+              <span class="power-on-caption" id="powerOnBtnCaption">Wake-on-LAN donanım uyandırma sinyali gönder</span>
+            </div>
+          </button>
+
+          <!-- Boot Watcher Progress Box (Appears when Power On is pressed) -->
+          <div class="boot-watcher-box hidden" id="bootWatcherBox">
+            <div class="boot-watcher-top">
+              <span class="boot-watcher-title" id="bootWatcherTitle">Açılış Sinyali Gönderildi</span>
+              <span class="mono-stat" id="bootWatcherTimer">0s</span>
+            </div>
+            <p class="boot-watcher-desc" id="bootWatcherDesc">
+              Ağ kartına uyandırma paketleri iletildi. Bilgisayar açıldığında arayüz otomatik bağlanacaktır...
+            </p>
+          </div>
+
+          <div class="offline-secondary-actions">
+            <button type="button" class="btn-primary" id="offlineRetryBtn">Şimdi Bağlanmayı Dene</button>
+            <button type="button" class="btn-secondary" id="offlineSwitchDeviceBtn">Başka Cihaz Seç</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================================
+           STATE 3: CONNECTED LIVE WORKSPACE (Shown ONLY when connected to PC!)
+           ===================================================================== -->
+      <div class="connected-workspace hidden" id="view-connected-workspace">
+        <div class="workspace-tabs-track" id="workspaceTabsTrack">
+        <!-- TAB 1: SAHNELER & HIZLI EYLEMLER -->
+        <section class="tab-panel active" id="tab-scenes">
+          <div class="section-block">
+            <div class="section-header-row">
+              <h2 class="section-title">Anlık Müdahale</h2>
+              <div class="header-action-group">
+                <span class="mono-caption" id="cpuRamReadout">CPU 0% · RAM 0%</span>
+                <button type="button" class="icon-btn icon-btn-sm" id="editQuickTilesBtn" title="Anlık Müdahaleyi Özelleştir" aria-label="Özelleştir">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M4 6h12M4 14h12M7 4v4M13 12v4" stroke-linecap="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="quick-action-strip layout-compact-row" id="quickActionStrip">
+              <button type="button" class="tactile-tile" data-quick="monitors-off">
+                <svg class="tile-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
+                  <path d="M7 16.5h6M10 13.5v3M3 3l14 14" stroke-linecap="round" />
+                </svg>
+                <span class="tile-label">Ekranları Kapat</span>
+              </button>
+
+              <button type="button" class="tactile-tile" data-quick="monitors-on">
+                <svg class="tile-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
+                  <path d="M7 16.5h6M10 13.5v3" stroke-linecap="round" />
+                </svg>
+                <span class="tile-label">Ekranları Aç</span>
+              </button>
+
+              <button type="button" class="tactile-tile" data-quick="show-desktop">
+                <svg class="tile-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="3" y="4" width="14" height="12" rx="1.5" />
+                  <path d="M3 12.5h14" stroke-linecap="round" />
+                </svg>
+                <span class="tile-label">Masaüstü</span>
+              </button>
+
+              <button type="button" class="tactile-tile" data-quick="lock-pc" id="quickLockBtn">
+                <svg class="tile-icon" id="quickLockIcon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="4.5" y="9" width="11" height="7.5" rx="1.5" />
+                  <path d="M7 9V6.5a3 3 0 0 1 6 0V9" stroke-linecap="round" />
+                </svg>
+                <span class="tile-label" id="quickLockLabel">Kilitle</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- QUICK LAUNCH BUTTONS (1 OR MULTIPLE FILES / APPS / FOLDERS WITH FULL PROPERTIES & OPEN-WITH) -->
+          <div class="section-block">
+            <div class="section-header-stack">
+              <div class="section-header-top">
+                <h1 class="section-title-lg">Hızlı Erişim Butonları</h1>
+                <div class="header-btn-group">
+                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="newQuickActionBtn" title="Hızlı Erişim Butonu Oluştur" aria-label="Oluştur">
+                    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <path d="M9 3.5v11M3.5 9h11" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <p class="section-subtitle">
+                Tek dokunuşla çalıştırın, düzenlemek için simgeye basılı tutun
+              </p>
+            </div>
+
+            <div class="empty-state-box" id="quickActionsEmptyState">
+              <h3 class="empty-title">Henüz hızlı erişim butonu eklenmedi</h3>
+              <p class="empty-desc">
+                Dosya, klasör, URL veya uygulamaları tek simgeyle başlatmak için sağ üstteki artı butonuna dokunun.
+              </p>
+            </div>
+
+            <div class="quick-actions-icon-grid hidden" id="quickActionsListContainer"></div>
+          </div>
+
+          <div class="section-block">
+            <div class="section-header-stack">
+              <div class="section-header-top">
+                <h1 class="section-title-lg">Çalışma Sahneleri</h1>
+                <div class="header-btn-group">
+                  <button type="button" class="icon-btn icon-btn-sm" id="snapshotSceneBtn" title="Mevcut Düzeni Yakala" aria-label="Yakala">
+                    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <path d="M2.5 6A1.5 1.5 0 0 1 4 4.5h2l1.2-1.5h3.6L12 4.5h2A1.5 1.5 0 0 1 15.5 6v7.5A1.5 1.5 0 0 1 14 15H4a1.5 1.5 0 0 1-1.5-1.5V6z" stroke-linejoin="round" />
+                      <circle cx="9" cy="9.5" r="2.5" />
+                    </svg>
+                  </button>
+                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="newSceneBtn" title="Yeni Sahne Oluştur" aria-label="Yeni Sahne">
+                    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <path d="M9 3.5v11M3.5 9h11" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <p class="section-subtitle">Tek dokunuşla çoklu uygulama başlatma ve ekran konumlandırma</p>
+            </div>
+
+            <!-- Empty State (Zero Default Scenes) -->
+            <div class="empty-state-box" id="scenesEmptyState">
+              <div class="empty-wireframe" id="emptyWireframeMonitors"></div>
+              <h3 class="empty-title">Bu bilgisayarda kayıtlı sahne yok</h3>
+              <p class="empty-desc">
+                Şu an açık olan pencerelerin hangi ekranda ve hangi köşede olduğunu sağ üstteki kamera simgesiyle yakalayabilir veya artı simgesiyle sıfırdan sahne oluşturabilirsiniz.
+              </p>
+            </div>
+
+            <div class="scenes-grid hidden" id="scenesListContainer"></div>
+          </div>
+        </section>
+
+        <!-- TAB 2: UYGULAMALAR (TÜM TESPİT EDİLEN VE ELLE EKLENEN UYGULAMALAR) -->
+        <section class="tab-panel" id="tab-apps">
+          <div class="section-block">
+            <div class="section-header-stack">
+              <div class="section-header-top">
+                <h1 class="section-title-lg">Uygulamalar</h1>
+                <div class="header-btn-group">
+                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="openAddCustomAppBtn" title="Uygulama Ekle" aria-label="Uygulama Ekle">
+                    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <path d="M9 3.5v11M3.5 9h11" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <p class="section-subtitle" id="appsCountSubtitle">
+                Dokunarak başlatın, özellikler için basılı tutun veya bilgi simgesine dokunun
+              </p>
+            </div>
+
+            <div class="apps-toolbar-stack">
+              <div class="apps-search-box">
+                <svg class="apps-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <circle cx="9" cy="9" r="5.5" />
+                  <path d="M13.2 13.2L17 17" stroke-linecap="round" />
+                </svg>
+                <input
+                  type="text"
+                  class="input-field apps-search-input"
+                  id="appsTabSearchInput"
+                  placeholder="Uygulama ve işlem ara..."
+                  autocomplete="off"
+                />
+              </div>
+            </div>
+
+            <div class="apps-catalog-grid" id="appsCatalogGrid"></div>
+          </div>
+        </section>
+
+        <!-- TAB 3: EKRANLAR & CANLI PENCERELER -->
+        <section class="tab-panel" id="tab-monitors">
+          <div class="section-block">
+            <div class="section-header-stack">
+              <div class="section-header-top">
+                <h1 class="section-title-lg">Monitör Topolojisi</h1>
+                <div class="header-btn-group">
+                  <button type="button" class="icon-btn icon-btn-sm" id="allMonitorsOffBtn" title="Tüm Ekranları Kapat" aria-label="Tümünü Kapat">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
+                      <path d="M7 16.5h6M10 13.5v3M3.5 3.5l13 13" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="allMonitorsOnBtn" title="Tüm Ekranları Aç" aria-label="Tümünü Aç">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
+                      <path d="M7 16.5h6M10 13.5v3" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="monitors-topology-grid" id="monitorsContainer"></div>
+
+            <div class="sub-panel">
+              <div class="sub-panel-header">
+                <span class="sub-panel-title">Windows Görüntü Yansıtma Modu</span>
+              </div>
+              <div class="segmented-row">
+                <button type="button" class="segment-btn" data-topology="extend">Uzat (Çift Ekran)</button>
+                <button type="button" class="segment-btn" data-topology="internal">Sadece 1. Ekran</button>
+                <button type="button" class="segment-btn" data-topology="external">Sadece 2. Ekran</button>
+                <button type="button" class="segment-btn" data-topology="clone">Yinele</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-block">
+            <div class="section-header-row">
+              <div>
+                <h2 class="section-title">Canlı Pencere ve Görev Yöneticisi</h2>
+                <p class="section-subtitle">Tek tuşla başka monitöre gönderin, büyütün veya kapatın</p>
+              </div>
+              <button type="button" class="icon-btn icon-btn-sm" id="refreshWindowsBtn" title="Pencereleri Yenile" aria-label="Pencereleri Yenile">
+                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M14.8 9a5.8 5.8 0 1 1-1.7-4.1L14.8 6.5M14.8 3.2v3.3h-3.3" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
+            <div class="open-windows-list" id="openWindowsContainer"></div>
+          </div>
+        </section>
+
+        <!-- TAB 3: UZAKTAN KONTROL (CHROME REMOTE DESKTOP GRADE WORKSTATION) -->
+        <section class="tab-panel" id="tab-remote">
+          <div class="remote-workstation" id="remoteWorkstation">
+            <!-- Top Remote Bar: Monitor Switcher + Icon-Only Mouse/Touch Mode + Fullscreen & Keyboard -->
+            <div class="remote-header-bar">
+              <div class="remote-mon-tabs" id="remoteMonitorSelector"></div>
+
+              <div class="remote-header-right">
+                <div class="remote-mode-toggle" title="Kontrol Modu">
+                  <button type="button" class="icon-btn icon-btn-sm mode-icon-btn active" id="modeTrackpadBtn" title="Fare İmleci Modu" aria-label="Fare İmleci Modu">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <path d="M4.5 3L15.5 9.5L10.2 11.1L7.8 16.5L4.5 3Z" stroke-linejoin="round" />
+                    </svg>
+                  </button>
+                  <button type="button" class="icon-btn icon-btn-sm mode-icon-btn" id="modeDirectTouchBtn" title="Dokunmatik Ekran Modu" aria-label="Dokunmatik Ekran Modu">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <path d="M8 11V5.5a1.5 1.5 0 0 1 3 0V10m0-1.5a1.5 1.5 0 0 1 3 0V11m0-1a1.5 1.5 0 0 1 3 0v3.5a4.5 4.5 0 0 1-4.5 4.5h-2.2a4.5 4.5 0 0 1-3.6-1.8L4.8 13a1.4 1.4 0 0 1 2.1-1.8L8 12.2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </button>
+                </div>
+                <button type="button" class="icon-btn icon-btn-sm" id="remoteLiveKbdBtn" title="Canlı Klavye Aç" aria-label="Canlı Klavye Aç">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="4.5" width="16" height="11" rx="1.5" />
+                    <path d="M5 8h1.5M8.5 8H10M12 8h1.5M5 11h1.5M13.5 11H15M7 13.2h6" stroke-linecap="round" />
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn-sm" id="remoteFullscreenBtn" title="Tam Ekran Masaüstü" aria-label="Tam Ekran Masaüstü">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M3.5 7.5V3.5h4M16.5 7.5V3.5h-4M3.5 12.5v4h4M16.5 12.5v4h-4" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Hidden input trap for live Android native keyboard typing -->
+            <input
+              type="text"
+              id="liveKeyboardTrap"
+              class="live-keyboard-trap"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              aria-label="Canlı Klavye Girişi"
+            />
+
+            <!-- Interactive Desktop Viewport (Supports Trackpad Mouse Cursor, Direct Touch, Hold-to-Drag, Pinch-to-Zoom) -->
+            <div class="remote-viewport-box" id="remoteViewportBox">
+              <!-- Floating HUD for Fullscreen Mode -->
+              <div class="remote-floating-hud hidden" id="remoteFloatingHud">
+                <button type="button" class="hud-chip active" id="hudModeToggleBtn" title="Kontrol Modu Değiştir">Fare Modu</button>
+                <button type="button" class="hud-chip" id="hudMonitorCycleBtn">EKRAN 1</button>
+                <button type="button" class="hud-chip" id="hudKeyboardBtn">Klavye</button>
+                <button type="button" class="hud-chip hud-chip-exit" id="hudExitFullscreenBtn">Çıkış</button>
+              </div>
+
+              <!-- Zoom & Pan Inner Transform Layer -->
+              <div class="remote-canvas-stage" id="remoteCanvasStage">
+                <canvas id="remoteScreenCanvas" class="remote-screen-img hidden" width="16" height="9" aria-label="Canlı PC Ekranı"></canvas>
+                <img id="remoteCursorLayer" class="remote-cursor-layer hidden" alt="" draggable="false" />
+
+                <!-- Touch / Click Ripple Indicator -->
+                <div class="remote-touch-indicator hidden" id="remoteTouchRipple"></div>
+              </div>
+
+              <!-- Right-Edge Dedicated Touch Scroll Strip -->
+              <div class="remote-scroll-strip" id="remoteScrollStrip" title="Kaydırma Şeridi">
+                <span class="scroll-strip-grip"></span>
+              </div>
+
+              <!-- Top-Left Live Stream Status Badge -->
+              <div class="remote-overlay-badges">
+                <span class="remote-stat-pill" id="remoteFpsBadge">60 FPS HAZIR</span>
+                <span class="remote-stat-pill remote-drag-badge hidden" id="remoteDragStateBadge">BASILI TUTULUYOR</span>
+              </div>
+
+              <!-- Stream diagnostics (tap the FPS badge): PC, network and phone numbers side by side -->
+              <pre class="remote-stats-panel hidden" id="remoteStatsPanel"></pre>
+
+              <!-- Placeholder when stream is paused -->
+              <div class="remote-placeholder" id="remotePlaceholder">
+                <p class="remote-placeholder-title">Uzaktan Masaüstü Hazır</p>
+                <p class="remote-placeholder-sub">
+                  Fare modunda imleci hareket ettirebilir, Dokunmatik modda ise doğrudan dokunduğunuz noktaya tıklayıp sürükleyebilirsiniz.
+                </p>
+                <button type="button" class="btn-primary" id="startStreamBtn">Canlı Masaüstünü Başlat</button>
+              </div>
+            </div>
+
+            <!-- Pro Keyboard & Shortcut Deck -->
+            <div class="keyboard-panel">
+              <form class="remote-text-form" id="remoteTextForm">
+                <input
+                  type="text"
+                  class="input-field"
+                  id="remoteTextInput"
+                  placeholder="Bilgisayara metin yazın veya yapıştırın..."
+                  autocomplete="off"
+                />
+                <button type="submit" class="btn-primary btn-compact">Yazdır</button>
+              </form>
+
+              <div class="kbd-category-tabs">
+                <button type="button" class="kbd-cat-btn active" data-kbd-cat="basic">Temel</button>
+                <button type="button" class="kbd-cat-btn" data-kbd-cat="edit">Düzen</button>
+                <button type="button" class="kbd-cat-btn" data-kbd-cat="nav">Yön</button>
+              </div>
+
+              <!-- Category 1: Basic & Window -->
+              <div class="hotkey-grid" id="kbdGridBasic">
+                <button type="button" class="kbd-btn" data-key="ESC">ESC</button>
+                <button type="button" class="kbd-btn" data-key="TAB">TAB</button>
+                <button type="button" class="kbd-btn" data-key="WIN">WIN</button>
+                <button type="button" class="kbd-btn" data-key="ALT+TAB">ALT+TAB</button>
+                <button type="button" class="kbd-btn" data-key="BACKSPACE">SİL</button>
+                <button type="button" class="kbd-btn" data-key="ENTER">ENTER</button>
+                <button type="button" class="kbd-btn" data-key="SPACE">BOŞLUK</button>
+                <button type="button" class="kbd-btn" data-key="WIN+D">MASAÜSTÜ</button>
+                <button type="button" class="kbd-btn" data-key="F11">TAM EKRAN</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+SHIFT+ESC">GÖREV YÖN.</button>
+                <button type="button" class="kbd-btn" data-key="DELETE">DEL</button>
+                <button type="button" class="kbd-btn kbd-danger" data-key="ALT+F4">ALT+F4</button>
+              </div>
+
+              <!-- Category 2: Edit & Clipboard Shortcuts -->
+              <div class="hotkey-grid hidden" id="kbdGridEdit">
+                <button type="button" class="kbd-btn" data-key="CTRL+C">KOPYALA</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+V">YAPIŞTIR</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+X">KES</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+Z">GERİ AL</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+A">TÜMÜNÜ SEÇ</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+S">KAYDET</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+W">SEKME KAPAT</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+T">YENİ SEKME</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+F">BUL</button>
+                <button type="button" class="kbd-btn" data-key="CTRL+R">YENİLE</button>
+                <button type="button" class="kbd-btn" data-key="WIN+L">KİLİTLE</button>
+                <button type="button" class="kbd-btn" data-key="WIN+SHIFT+S">EKRAN ALINTI</button>
+              </div>
+
+              <!-- Category 3: Navigation & Function Keys -->
+              <div class="hotkey-grid hidden" id="kbdGridNav">
+                <button type="button" class="kbd-btn" data-key="LEFT">SOL</button>
+                <button type="button" class="kbd-btn" data-key="UP">YUKARI</button>
+                <button type="button" class="kbd-btn" data-key="DOWN">AŞAĞI</button>
+                <button type="button" class="kbd-btn" data-key="RIGHT">SAĞ</button>
+                <button type="button" class="kbd-btn" data-key="PGUP">SAYFA YUKARI</button>
+                <button type="button" class="kbd-btn" data-key="PGDN">SAYFA AŞAĞI</button>
+                <button type="button" class="kbd-btn" data-key="HOME">BAŞA (HOME)</button>
+                <button type="button" class="kbd-btn" data-key="END">SONA (END)</button>
+                <button type="button" class="kbd-btn" data-key="F2">F2</button>
+                <button type="button" class="kbd-btn" data-key="F5">F5</button>
+                <button type="button" class="kbd-btn" data-key="F10">F10</button>
+                <button type="button" class="kbd-btn" data-key="F12">F12</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 4: SİSTEM, SES MİKSERİ, ZAMANLAYICI & GÜÇ -->
+        <section class="tab-panel" id="tab-system">
+          <div class="section-block">
+            <div class="section-header-row">
+              <div>
+                <h1 class="section-title-lg">Ses ve Medya Mikseri</h1>
+                <p class="section-subtitle">Ana çıkış ve uygulama bazlı bağımsız ses kontrolü</p>
+              </div>
+              <button type="button" class="icon-btn icon-btn-sm" id="refreshAudioBtn" title="Ses Oturumlarını Yenile" aria-label="Yenile">
+                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M14.8 9a5.8 5.8 0 1 1-1.7-4.1L14.8 6.5M14.8 3.2v3.3h-3.3" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="audio-master-card">
+              <div class="audio-row-top">
+                <div class="audio-label-group">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M9 5L5.5 8H3v4h2.5L9 15V5z" stroke-linejoin="round" />
+                    <path d="M12.5 7.5a3.5 3.5 0 0 1 0 5M15 5a7 7 0 0 1 0 10" stroke-linecap="round" />
+                  </svg>
+                  <span class="audio-label">Ana Sistem Sesi</span>
+                </div>
+                <div class="audio-row-right">
+                  <span class="mono-stat" id="masterVolumeValue">100%</span>
+                  <button type="button" class="icon-btn icon-btn-sm" id="openAppMixerBtn" title="Uygulama Bazlı Ses Mikseri" aria-label="Uygulama Bazlı Ses Mikseri">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <path d="M4 6h12M4 10h12M4 14h12" stroke-linecap="round" />
+                      <circle cx="7.5" cy="6" r="1.8" fill="currentColor" />
+                      <circle cx="12.5" cy="10" r="1.8" fill="currentColor" />
+                      <circle cx="8.5" cy="14" r="1.8" fill="currentColor" />
+                    </svg>
+                  </button>
+                  <button type="button" class="icon-btn icon-btn-sm" id="masterMuteBtn" title="Sesi Kapat / Aç" aria-label="Sesi Kapat / Aç">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <path d="M9 5L5.5 8H3v4h2.5L9 15V5z" stroke-linejoin="round" />
+                      <path d="M13 8l4 4M17 8l-4 4" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <input type="range" class="volume-slider" id="masterVolumeSlider" min="0" max="100" value="100" />
+
+              <!-- Live Now Playing Media Card (Synced with Android Notification Bar) -->
+              <div class="now-playing-banner" id="nowPlayingBanner">
+                <div class="now-playing-icon-wrap" id="nowPlayingIconBox">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <circle cx="10" cy="10" r="7" />
+                    <path d="M8.5 7.5l4.5 2.5-4.5 2.5v-5z" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <div class="now-playing-meta">
+                  <span class="now-playing-title" id="nowPlayingTitle">Medya Bekleniyor</span>
+                </div>
+              </div>
+
+              <!-- Live Synced Media Seek Timeline -->
+              <div class="media-timeline-row" id="mediaTimelineRow">
+                <span class="media-time-label" id="mediaCurrentTime">00:00</span>
+                <input type="range" class="volume-slider media-seek-slider" id="mediaSeekSlider" min="0" max="100" value="0" />
+                <span class="media-time-label" id="mediaTotalTime">00:00</span>
+              </div>
+
+              <div class="media-transport-row">
+                <button type="button" class="transport-btn" data-key="MEDIA_PREV" title="Önceki Parça" aria-label="Önceki Parça">
+                  <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+                    <path d="M5.5 5v10M14.5 5L8 10l6.5 5V5z" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
+                <button type="button" class="transport-btn transport-btn-main" data-key="MEDIA_PLAY_PAUSE" title="Oynat / Duraklat" aria-label="Oynat / Duraklat">
+                  <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+                    <path d="M5.5 4.5l7 5.5-7 5.5V4.5z" stroke-linejoin="round" />
+                    <path d="M15 5v10" stroke-linecap="round" />
+                  </svg>
+                </button>
+                <button type="button" class="transport-btn" data-key="MEDIA_NEXT" title="Sonraki Parça" aria-label="Sonraki Parça">
+                  <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+                    <path d="M14.5 5v10M5.5 5L12 10l-6.5 5V5z" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- PER-MONITOR SCREEN BRIGHTNESS -->
+          <div class="section-block">
+            <div class="section-header-row">
+              <div>
+                <h2 class="section-title">Ekran Parlaklığı</h2>
+              </div>
+            </div>
+
+            <div class="sub-panel">
+              <div class="monitors-brightness-list" id="monitorsBrightnessList">
+                <div class="monitor-brightness-item" data-monitor-brightness-row="0">
+                  <div class="audio-row-top">
+                    <div class="audio-label-group">
+                      <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                        <circle cx="10" cy="10" r="3.5" />
+                        <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" stroke-linecap="round" />
+                      </svg>
+                      <span class="audio-label">Ekran 1</span>
+                    </div>
+                    <span class="mono-stat">100%</span>
+                  </div>
+                  <input type="range" class="volume-slider monitor-brightness-slider" data-monitor-index="0" min="10" max="100" value="100" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TIMED SLEEP / SHUTDOWN SCHEDULER -->
+          <div class="section-block">
+            <div class="section-header-row">
+              <div>
+                <h2 class="section-title">Zamanlı Güç Sayacı</h2>
+              </div>
+              <span class="mono-caption" id="powerTimerStatusBadge">KAPALI</span>
+            </div>
+
+            <div class="sub-panel">
+              <div class="segmented-row timer-mode-icon-grid" id="powerTimerModeRow">
+                <button type="button" class="segment-btn segment-icon-btn active" data-timer-mode="sleep" title="Uyku Modu">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M15.5 11.8A6.5 6.5 0 0 1 8.2 4.5a6.5 6.5 0 1 0 7.3 7.3z" stroke-linejoin="round" />
+                  </svg>
+                  <span>Uyku Modu</span>
+                </button>
+                <button type="button" class="segment-btn segment-icon-btn" data-timer-mode="monitors_off" title="Ekranları Kapat">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
+                    <path d="M7 16.5h6M10 13.5v3M4 4l12 12" stroke-linecap="round" />
+                  </svg>
+                  <span>Ekranları Kapat</span>
+                </button>
+                <button type="button" class="segment-btn segment-icon-btn" data-timer-mode="shutdown" title="Bilgisayarı Kapat">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M10 3v7" stroke-linecap="round" />
+                    <path d="M14.6 5.4a6.5 6.5 0 1 1-9.2 0" stroke-linecap="round" />
+                  </svg>
+                  <span>Bilgisayarı Kapat</span>
+                </button>
+              </div>
+              <div class="timer-preset-row">
+                <button type="button" class="btn-secondary btn-compact" data-timer-mins="15">15 dk</button>
+                <button type="button" class="btn-secondary btn-compact" data-timer-mins="30">30 dk</button>
+                <button type="button" class="btn-secondary btn-compact" data-timer-mins="60">60 dk</button>
+                <button type="button" class="btn-secondary btn-compact" data-timer-mins="90">90 dk</button>
+                <button type="button" class="btn-danger btn-compact timer-cancel-icon-btn" data-timer-mins="0" title="Sayacı İptal Et" aria-label="Sayacı İptal Et">
+                  <svg class="sys-pack-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7">
+                    <path d="M4.5 4.5l9 9M13.5 4.5l-9 9" stroke-linecap="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-block">
+            <div class="section-header-row">
+              <div>
+                <h2 class="section-title">Pano Köprüsü</h2>
+              </div>
+              <button type="button" class="btn-secondary btn-compact" id="pullClipboardBtn">Panoyu Kopyala</button>
+            </div>
+            <div class="clipboard-box">
+              <textarea
+                id="clipboardInput"
+                class="input-field textarea-field"
+                rows="2"
+                placeholder="PC panosuna kopyalanacak metin veya bağlantı..."
+              ></textarea>
+              <button type="button" class="btn-primary btn-full" id="pushClipboardBtn">PC Panosuna Gönder</button>
+            </div>
+          </div>
+
+          <div class="section-block">
+            <h2 class="section-title">Güç ve Oturum Yönetimi</h2>
+            <div class="power-grid">
+              <button type="button" class="power-card" data-power="lock" id="powerLockBtn">
+                <div class="power-card-head">
+                  <svg class="power-card-icon" id="powerLockIcon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <rect x="4.5" y="9" width="11" height="7.5" rx="1.5" />
+                    <path d="M7 9V6.5a3 3 0 0 1 6 0V9" stroke-linecap="round" />
+                  </svg>
+                  <span class="power-title" id="powerLockTitle">Kilitle</span>
+                </div>
+                <span class="power-sub" id="powerLockSub">Ekran kilidini aç</span>
+              </button>
+              <button type="button" class="power-card" data-power="sleep">
+                <div class="power-card-head">
+                  <svg class="power-card-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M15.5 11.8A6.5 6.5 0 0 1 8.2 4.5a6.5 6.5 0 1 0 7.3 7.3z" stroke-linejoin="round" />
+                  </svg>
+                  <span class="power-title">Uyku Modu</span>
+                </div>
+                <span class="power-sub">RAM koruyarak uyut</span>
+              </button>
+              <button type="button" class="power-card power-warn" data-power="restart">
+                <div class="power-card-head">
+                  <svg class="power-card-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M16 10a6 6 0 1 1-1.8-4.3L16 7.5M16 4v3.5h-3.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  <span class="power-title">Yeniden Başlat</span>
+                </div>
+                <span class="power-sub">Sistemi yeniden başlat</span>
+              </button>
+              <button type="button" class="power-card power-danger" data-power="shutdown">
+                <div class="power-card-head">
+                  <svg class="power-card-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M10 3v7" stroke-linecap="round" />
+                    <path d="M14.6 5.4a6.5 6.5 0 1 1-9.2 0" stroke-linecap="round" />
+                  </svg>
+                  <span class="power-title">Bilgisayarı Kapat</span>
+                </div>
+                <span class="power-sub">Güvenli tam kapatma</span>
+              </button>
+            </div>
+
+            <button type="button" class="btn-secondary btn-full function-prefs-open-btn" id="openFunctionPrefsBtn">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <path d="M4 6h8M15 6h1M4 14h2M9 14h7" stroke-linecap="round" />
+                <circle cx="13.5" cy="6" r="1.8" />
+                <circle cx="7.5" cy="14" r="1.8" />
+              </svg>
+              Özelleştirmeler
+            </button>
+          </div>
+        </section>
+
+        </div>
+      </div>
+    </main>
+
+    <!-- BOTTOM ARCHITECTURAL NAVIGATION (Shown ONLY when inside a connected PC workspace!) -->
+    <nav class="bottom-nav hidden" id="bottomNav" aria-label="Cihaz İçi Menü">
+      <span class="nav-active-indicator" id="navActiveIndicator" aria-hidden="true"></span>
+      <button type="button" class="nav-item active" data-tab="tab-scenes">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1" />
+          <rect x="11" y="2.5" width="6.5" height="6.5" rx="1" />
+          <rect x="2.5" y="11" width="6.5" height="6.5" rx="1" />
+          <rect x="11" y="11" width="6.5" height="6.5" rx="1" />
+        </svg>
+        <span class="nav-label">Sahneler</span>
+      </button>
+
+      <button type="button" class="nav-item" data-tab="tab-apps">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="5.2" cy="5.2" r="2.1" />
+          <circle cx="14.8" cy="5.2" r="2.1" />
+          <circle cx="5.2" cy="14.8" r="2.1" />
+          <path d="M14.8 12.4v4.8M12.4 14.8h4.8" stroke-linecap="round" />
+        </svg>
+        <span class="nav-label">Uygulamalar</span>
+      </button>
+
+      <button type="button" class="nav-item" data-tab="tab-monitors">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="3.5" width="16" height="10.5" rx="1.5" />
+          <path d="M6.5 17h7M10 14v3" stroke-linecap="round" />
+        </svg>
+        <span class="nav-label">Ekranlar</span>
+      </button>
+
+      <button type="button" class="nav-item" data-tab="tab-remote">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M4 7V4h3M16 7V4h-3M4 13v3h3M16 13v3h-3" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="10" cy="10" r="2" />
+        </svg>
+        <span class="nav-label">Uzaktan</span>
+      </button>
+
+      <button type="button" class="nav-item" data-tab="tab-system">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M4 6h12M4 10h12M4 14h12" stroke-linecap="round" />
+          <circle cx="7" cy="6" r="1.5" fill="#09090B" />
+          <circle cx="13" cy="10" r="1.5" fill="#09090B" />
+          <circle cx="9" cy="14" r="1.5" fill="#09090B" />
+        </svg>
+        <span class="nav-label">Sistem</span>
+      </button>
+    </nav>
+
+    <!-- HOME / HUB GLOBAL BOTTOM NAVIGATION (Shown on Home / Cihaz Merkezi view!) -->
+    <nav class="bottom-nav hub-bottom-nav hidden" id="hubBottomNav" aria-label="Genel Menü">
+      <span class="nav-active-indicator hub-nav-indicator" id="hubNavActiveIndicator" aria-hidden="true"></span>
+      <button type="button" class="hub-nav-item nav-item active" data-hub-tab="hub-tab-devices">
+        <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="3.5" width="16" height="10.5" rx="1.5" />
+          <path d="M6.5 17h7M10 14v3" stroke-linecap="round" />
+        </svg>
+        <span class="nav-label">Cihazlar</span>
+      </button>
+
+      <button type="button" class="hub-nav-item nav-item" data-hub-tab="hub-tab-settings">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3.2"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span class="nav-label">Ayarlar</span>
+      </button>
+    </nav>
+
+    <!-- MODAL 1: SAVED COMPUTERS SWITCHER SHEET -->
+    <div class="modal-backdrop hidden" id="deviceSheetModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">Kayıtlı Bilgisayarlar</h2>
+            <p class="modal-subtitle">Geçiş yapmak istediğiniz bilgisayara dokunun</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeDeviceSheetBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="saved-devices-list" id="savedDevicesList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: VISUAL SCENE COMPOSER -->
+    <div class="modal-backdrop hidden" id="sceneComposerModal">
+      <div class="modal-sheet modal-sheet-large">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="sceneModalTitle">Sahne Oluşturucu</h2>
+            <p class="modal-subtitle">Uygulamaları hedef ekran ve konumlarına atayın</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeSceneModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="sceneNameInput">Sahne Adı</label>
+            <input
+              type="text"
+              id="sceneNameInput"
+              class="input-field"
+              placeholder="Örn: Çalışma ve İletişim Düzeni"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="sceneOtherWindowsSelect">Sahne Harici Kalan Diğer Pencereler</label>
+            <select class="input-field" id="sceneOtherWindowsSelect">
+              <option value="keep">Olduğu gibi bırak (Arka planda kalsın)</option>
+              <option value="minimize">Diğer pencereleri simge durumuna küçült</option>
+              <option value="close">Diğer pencereleri kapat</option>
+            </select>
+          </div>
+
+          <div class="composer-blueprint-box">
+            <div class="blueprint-header">
+              <span class="sub-panel-title">Canlı Yerleşim Önizlemesi</span>
+              <span class="mono-caption" id="composerItemCount">0 Uygulama</span>
+            </div>
+            <div class="blueprint-monitors-row" id="composerBlueprintMonitors"></div>
+          </div>
+
+          <div class="rule-builder-card">
+            <div class="rule-builder-header">
+              <span class="sub-panel-title">Sahneye Uygulama Ekle</span>
+            </div>
+
+            <div id="installedAppPickerGroup" class="form-group">
+              <label class="form-label" for="sceneAppSearchInput">Uygulama Seçin</label>
+              <div class="custom-app-picker" id="sceneCustomAppPicker">
+                <div class="app-picker-search-wrap">
+                  <svg class="app-picker-search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <path d="M10.5 10.5L14 14" stroke-linecap="round" />
+                  </svg>
+                  <input
+                    type="text"
+                    id="sceneAppSearchInput"
+                    class="input-field app-picker-search-input"
+                    placeholder="Uygulama ara..."
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="app-picker-list" id="sceneAppPickerList"></div>
+              </div>
+              <input type="hidden" id="appSelectDropdown" value="0" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Hedef Monitör</label>
+              <div class="monitor-pill-row" id="ruleMonitorPills"></div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Ekran Konumu (Bölge)</label>
+              <div class="zone-preset-grid" id="ruleZoneGrid">
+                <button type="button" class="zone-btn active" data-zone="fullscreen">
+                  <span class="zone-diagram zd-full"></span>
+                  <span class="zone-name">Tam Ekran</span>
+                </button>
+                <button type="button" class="zone-btn" data-zone="left-half">
+                  <span class="zone-diagram zd-left"></span>
+                  <span class="zone-name">Sol Yarı</span>
+                </button>
+                <button type="button" class="zone-btn" data-zone="right-half">
+                  <span class="zone-diagram zd-right"></span>
+                  <span class="zone-name">Sağ Yarı</span>
+                </button>
+                <button type="button" class="zone-btn" data-zone="top-left">
+                  <span class="zone-diagram zd-tl"></span>
+                  <span class="zone-name">Sol Üst</span>
+                </button>
+                <button type="button" class="zone-btn" data-zone="top-right">
+                  <span class="zone-diagram zd-tr"></span>
+                  <span class="zone-name">Sağ Üst</span>
+                </button>
+                <button type="button" class="zone-btn" data-zone="bottom-left">
+                  <span class="zone-diagram zd-bl"></span>
+                  <span class="zone-name">Sol Alt</span>
+                </button>
+                <button type="button" class="zone-btn" data-zone="bottom-right">
+                  <span class="zone-diagram zd-br"></span>
+                  <span class="zone-name">Sağ Alt</span>
+                </button>
+                <button type="button" class="zone-btn" data-zone="top-half">
+                  <span class="zone-diagram zd-top"></span>
+                  <span class="zone-name">Üst Yarı</span>
+                </button>
+                <button type="button" class="zone-btn" data-zone="bottom-half">
+                  <span class="zone-diagram zd-bottom"></span>
+                  <span class="zone-name">Alt Yarı</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Pencere Görünümü</label>
+              <div class="segmented-row scene-vis-row" id="ruleVisibilityPills">
+                <button type="button" class="segment-btn active" data-scene-vis="foreground">Ön Planda</button>
+                <button type="button" class="segment-btn" data-scene-vis="background">Arkada Açık</button>
+                <button type="button" class="segment-btn" data-scene-vis="minimized">Simge Durumu</button>
+              </div>
+            </div>
+
+            <button type="button" class="btn-secondary btn-full" id="addRuleToSceneBtn">
+              Listeye Ekle
+            </button>
+          </div>
+
+          <div class="scene-items-editor-list" id="sceneEditorItemsList"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="cancelSceneModalBtn">Vazgeç</button>
+          <button type="button" class="btn-primary" id="saveSceneConfirmBtn">Kaydet</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: QUICK WINDOW SNAP SHEET -->
+    <div class="modal-backdrop hidden" id="windowSnapModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="snapModalWindowTitle">Pencere Konumlandır</h2>
+            <p class="modal-subtitle" id="snapModalWindowProc">Hedef ekran ve bölge seçin</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeSnapModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Hedef Ekran</label>
+            <div class="monitor-pill-row" id="snapModalMonitorPills"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Anında Konumlandır</label>
+            <div class="zone-preset-grid" id="snapModalZoneGrid">
+              <button type="button" class="zone-btn" data-snap-zone="fullscreen">
+                <span class="zone-diagram zd-full"></span>
+                <span class="zone-name">Tam Ekran</span>
+              </button>
+              <button type="button" class="zone-btn" data-snap-zone="left-half">
+                <span class="zone-diagram zd-left"></span>
+                <span class="zone-name">Sol Yarı</span>
+              </button>
+              <button type="button" class="zone-btn" data-snap-zone="right-half">
+                <span class="zone-diagram zd-right"></span>
+                <span class="zone-name">Sağ Yarı</span>
+              </button>
+              <button type="button" class="zone-btn" data-snap-zone="top-left">
+                <span class="zone-diagram zd-tl"></span>
+                <span class="zone-name">Sol Üst</span>
+              </button>
+              <button type="button" class="zone-btn" data-snap-zone="top-right">
+                <span class="zone-diagram zd-tr"></span>
+                <span class="zone-name">Sağ Üst</span>
+              </button>
+              <button type="button" class="zone-btn" data-snap-zone="bottom-left">
+                <span class="zone-diagram zd-bl"></span>
+                <span class="zone-name">Sol Alt</span>
+              </button>
+              <button type="button" class="zone-btn" data-snap-zone="bottom-right">
+                <span class="zone-diagram zd-br"></span>
+                <span class="zone-name">Sağ Alt</span>
+              </button>
+              <button type="button" class="zone-btn" data-snap-zone="top-half">
+                <span class="zone-diagram zd-top"></span>
+                <span class="zone-name">Üst Yarı</span>
+              </button>
+              <button type="button" class="zone-btn" data-snap-zone="bottom-half">
+                <span class="zone-diagram zd-bottom"></span>
+                <span class="zone-name">Alt Yarı</span>
+              </button>
+            </div>
+          </div>
+          <div class="snap-extra-actions">
+            <button type="button" class="icon-action-btn" id="snapInspectWinBtn" title="Özellikler" aria-label="Özellikler">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <circle cx="10" cy="10" r="2.5" />
+                <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
+              </svg>
+            </button>
+            <button type="button" class="icon-action-btn" id="snapMinimizeWinBtn" title="Simge Durumu" aria-label="Simge Durumu">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M5 14h10" stroke-linecap="round" />
+              </svg>
+            </button>
+            <button type="button" class="icon-action-btn danger" id="snapCloseWinBtn" title="Pencereyi Kapat" aria-label="Pencereyi Kapat">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+                <path d="M5.5 5.5l9 9M14.5 5.5l-9 9" stroke-linecap="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 4: QUICK ACTION BUTTON COMPOSER (SINGLE OR MULTI-FILE / APP BUILDER WITH PER-ITEM PROPERTIES) -->
+    <div class="modal-backdrop hidden" id="quickActionComposerModal">
+      <div class="modal-sheet modal-sheet-large">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="qaModalTitle">Hızlı Erişim Butonu Oluştur</h2>
+            <p class="modal-subtitle">Bir veya birden fazla dosya, klasör, URL veya uygulama atayın</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeQaModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="qaNameInput">Buton Adı</label>
+            <input
+              type="text"
+              id="qaNameInput"
+              class="input-field"
+              placeholder="Örn: Çalışma Dosyalarım"
+            />
+          </div>
+
+          <!-- CLEAN ADD ITEM BUILDER CARD -->
+          <div class="rule-builder-card">
+            <div class="rule-builder-header">
+              <span class="sub-panel-title" id="qaItemBuilderHeading">Hedef Seçin</span>
+              <div class="source-tabs" id="qaSourceTabs">
+                <button type="button" class="source-tab active" data-qa-source="file">Dosya Çalıştır</button>
+                <button type="button" class="source-tab" data-qa-source="app">Uygulama</button>
+                <button type="button" class="source-tab" data-qa-source="custom">Klasör / URL</button>
+              </div>
+            </div>
+
+            <!-- Source 1: PC File / Executable / Script Picker & Launch Settings -->
+            <div id="qaSourceFileGroup" class="form-group">
+              <div class="qa-file-picker-bar">
+                <input
+                  type="text"
+                  id="qaSelectedFilePathInput"
+                  class="input-field"
+                  placeholder="Çalıştırılacak dosya (.exe, .bat, script, belge)..."
+                />
+                <button type="button" class="btn-primary btn-compact" id="qaBrowsePcBtn">Dosya Seç</button>
+              </div>
+              <div class="form-row-2" style="margin-top: 8px;">
+                <input
+                  type="text"
+                  id="qaFileArgsInput"
+                  class="input-field input-field-sm"
+                  placeholder="Parametreler / Argümanlar (isteğe bağlı)"
+                />
+                <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-secondary); cursor: pointer;">
+                  <input type="checkbox" id="qaFileAdminCheck" />
+                  Yönetici Olarak Çalıştır
+                </label>
+              </div>
+            </div>
+
+            <!-- Source 2: Installed PC App (Searchable Custom Picker) -->
+            <div id="qaSourceAppGroup" class="form-group hidden">
+              <div class="custom-app-picker" id="qaCustomAppPicker">
+                <div class="app-picker-search-wrap">
+                  <svg class="app-picker-search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="7" cy="7" r="4.5" />
+                    <path d="M10.5 10.5L14 14" stroke-linecap="round" />
+                  </svg>
+                  <input
+                    type="text"
+                    id="qaAppSearchInput"
+                    class="input-field app-picker-search-input"
+                    placeholder="Uygulama ara..."
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="app-picker-list" id="qaAppPickerList"></div>
+              </div>
+              <input type="hidden" id="qaInstalledAppSelect" value="0" />
+            </div>
+
+            <!-- Source 3: Custom Path or URL -->
+            <div id="qaSourceCustomGroup" class="form-group hidden">
+              <div class="form-row-2">
+                <div class="form-group">
+                  <input type="text" id="qaCustomItemNameInput" class="input-field" placeholder="Başlık" />
+                </div>
+                <div class="form-group">
+                  <input type="text" id="qaCustomItemPathInput" class="input-field" placeholder="https://... veya yol" />
+                </div>
+              </div>
+            </div>
+
+            <!-- COLLAPSIBLE ITEM PROPERTIES ("ÖZELLİKLER") -->
+            <details class="qa-advanced-details" id="qaAdvancedDetails">
+              <summary class="qa-advanced-summary">
+                <span>Özellikler ve Çalıştırma Ayarları (Ekran, Konum, Pencere)</span>
+              </summary>
+              <div class="qa-advanced-box">
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label class="form-label" for="qaTargetMonitorSelect">Açılacağı Ekran</label>
+                    <select id="qaTargetMonitorSelect" class="input-field"></select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="qaTargetZoneSelect">Ekran Konumu</label>
+                    <select id="qaTargetZoneSelect" class="input-field">
+                      <option value="none">Varsayılan Konum</option>
+                      <option value="full">Tam Ekran (Maximize)</option>
+                      <option value="left-half">Sol Yarı (50%)</option>
+                      <option value="right-half">Sağ Yarı (50%)</option>
+                      <option value="center">Ekran Ortası (80%)</option>
+                      <option value="top-half">Üst Yarı</option>
+                      <option value="bottom-half">Alt Yarı</option>
+                      <option value="top-left">Sol Üst Köşe</option>
+                      <option value="top-right">Sağ Üst Köşe</option>
+                      <option value="bottom-left">Sol Alt Köşe</option>
+                      <option value="bottom-right">Sağ Alt Köşe</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label class="form-label" for="qaWindowStyleSelect">Pencere Modu</label>
+                    <select id="qaWindowStyleSelect" class="input-field">
+                      <option value="normal">Normal Pencere</option>
+                      <option value="maximized">Tam Ekran</option>
+                      <option value="minimized">Simge Durumunda</option>
+                      <option value="hidden">Arka Planda Gizli</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="qaIfRunningSelect">Zaten Açıksa</label>
+                    <select id="qaIfRunningSelect" class="input-field">
+                      <option value="new">Yeni Pencere Aç</option>
+                      <option value="focus">Mevcut Pencereyi Öne Getir</option>
+                      <option value="restart">Yeniden Başlat</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label class="form-label" for="qaDelaySelect">Başlatma Gecikmesi</label>
+                    <select id="qaDelaySelect" class="input-field">
+                      <option value="0">Anında (0 sn)</option>
+                      <option value="500">0.5 saniye sonra</option>
+                      <option value="1000">1 saniye sonra</option>
+                      <option value="2000">2 saniye sonra</option>
+                      <option value="4000">4 saniye sonra</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Çoklu Çalıştırma</label>
+                    <div class="segmented-row" id="qaExecModeRow">
+                      <button type="button" class="segment-btn active" data-qa-exec="parallel">Aynı Anda</button>
+                      <button type="button" class="segment-btn" data-qa-exec="sequential">Sırayla</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="qa-toggle-checks-row">
+                  <label class="check-pill">
+                    <input type="checkbox" id="qaRunAsAdminCheck" />
+                    <span>Yönetici Olarak Çalıştır</span>
+                  </label>
+                  <label class="check-pill">
+                    <input type="checkbox" id="qaAlwaysOnTopCheck" />
+                    <span>Her Zaman Üstte Tut</span>
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            <button type="button" class="btn-secondary btn-full" id="qaAddItemToListBtn">
+              Listeye Ekle
+            </button>
+          </div>
+
+          <div class="sub-panel-header">
+            <span class="sub-panel-title">Buton İçindeki Öğeler</span>
+            <span class="mono-caption" id="qaItemsCountBadge">0 Öğe</span>
+          </div>
+          <div class="scene-items-editor-list" id="qaEditorItemsList"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="icon-action-btn danger hidden" id="deleteQaModalBtn" title="Sil" aria-label="Sil">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" class="icon-action-btn hidden" id="inspectQaModalBtn" title="Özellikler" aria-label="Özellikler">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="10" cy="10" r="2.5" />
+              <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button type="button" class="btn-secondary" id="cancelQaModalBtn">Vazgeç</button>
+          <button type="button" class="btn-primary" id="saveQaConfirmBtn">Kaydet</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 5: LIVE PC FILE & FOLDER BROWSER MODAL -->
+    <div class="modal-backdrop hidden" id="pcFileBrowserModal">
+      <div class="modal-sheet modal-sheet-large">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="fsBrowserTitle">PC Dosya ve Klasör Gezgini</h2>
+            <p class="modal-subtitle" id="fsBrowserSubtitle">Dosyaları doğrudan açın, özelliklerini inceleyin veya hızlı butona ekleyin</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeFsBrowserBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Quick Drive / Special Folder Roots -->
+          <div class="monitor-pill-row" id="fsRootsPillRow"></div>
+
+          <!-- Current Path & Up Button -->
+          <div class="fs-path-bar">
+            <button type="button" class="btn-secondary btn-compact" id="fsParentDirBtn">Üst Klasör</button>
+            <input type="text" id="fsCurrentPathInput" class="input-field" placeholder="C:\..." />
+            <button type="button" class="btn-secondary btn-compact" id="fsGoPathBtn">Git</button>
+          </div>
+
+          <!-- Search Filter + Add Current Folder -->
+          <div class="fs-path-bar">
+            <input
+              type="text"
+              id="fsSearchFilterInput"
+              class="input-field"
+              placeholder="Bu klasörde dosya veya uzantı ara (.pdf, .exe, .mp4...)"
+            />
+            <button type="button" class="btn-primary btn-compact" id="fsSelectCurrentFolderBtn">
+              Bu Klasörü Seç
+            </button>
+          </div>
+
+          <div class="fs-entries-list" id="fsEntriesListContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 6: UNIVERSAL PROPERTIES ("ÖZELLİKLER") INSPECTOR SHEET -->
+    <div class="modal-backdrop hidden" id="universalPropertiesModal">
+      <div class="modal-sheet modal-sheet-large">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="propModalTitle">Özellikler</h2>
+            <p class="modal-subtitle" id="propModalSubtitle">Ekran ve pencere yapılandırması</p>
+          </div>
+          <button type="button" class="icon-btn" id="closePropModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body" id="propModalBodyContent"></div>
+      </div>
+    </div>
+
+    <!-- MODAL 7: ADD CUSTOM APP SHEET ("ELLE UYGULAMA EKLE") -->
+    <div class="modal-backdrop hidden" id="addCustomAppModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="customAppModalTitle">Uygulama Ekle</h2>
+            <p class="modal-subtitle">Otomatik algılanmayan bir .exe veya kısayolu elle kataloğa kaydedin</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeCustomAppModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <form class="modal-body" id="saveManualAppForm">
+          <input type="hidden" id="manualAppIdInput" value="" />
+          <div class="form-group">
+            <label class="form-label" for="manualAppNameInput">Uygulama Adı</label>
+            <input
+              type="text"
+              id="manualAppNameInput"
+              class="input-field"
+              placeholder="Örn: Photoshop, FiveM, Özel Script"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="manualAppPathInput">Çalıştırılabilir Dosya (.exe / .lnk / .bat)</label>
+            <div class="qa-file-picker-bar">
+              <input
+                type="text"
+                id="manualAppPathInput"
+                class="input-field"
+                placeholder="C:\Program Files\...\app.exe"
+                required
+              />
+              <button type="button" class="btn-secondary btn-compact" id="manualAppBrowsePcBtn">
+                Seç
+              </button>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" id="cancelCustomAppModalBtn">Vazgeç</button>
+            <button type="submit" class="btn-primary">Kaydet</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL 8: PER-APP AUDIO MIXER DRAWER ("UYGULAMA BAZLI SES MİKSERİ") -->
+    <div class="modal-backdrop hidden" id="appAudioMixerModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">Uygulama Ses Mikseri</h2>
+            <p class="modal-subtitle">Açık uygulamaların ses düzeylerini bağımsız ayarlayın</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeAppMixerModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="app-audio-list" id="appAudioSessionsContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 9: PC CLIPBOARD HISTORY DRAWER ("PANO GEÇMİŞİ") -->
+    <div class="modal-backdrop hidden" id="clipboardHistoryModal">
+      <div class="modal-sheet modal-sheet-large">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">PC Pano Geçmişi</h2>
+            <p class="modal-subtitle">Telefon panosuna kopyalamak için bir metne veya görsele dokunun</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeClipboardHistoryModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="clipboard-history-list" id="clipboardHistoryListContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 10: CONNECTION AUDIT LOG (DENETİM KAYDI) -->
+    <div class="modal-backdrop hidden" id="connectionAuditLogModal">
+      <div class="modal-sheet modal-sheet-large">
+        <div class="modal-header">
+          <div class="modal-header-icon-title">
+            <svg class="sys-pack-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3.25L5 6.25v5.25c0 4.6 3.05 8.1 7 9.25 3.95-1.15 7-4.65 7-9.25V6.25L12 3.25z"/>
+              <path d="M12 8v4l2.5 1.5"/>
+            </svg>
+            <div>
+              <h2 class="modal-title">Denetim Kaydı</h2>
+              <p class="modal-subtitle">Cihaz bağlantı, kilit ve eylem zaman çizelgesi</p>
+            </div>
+          </div>
+          <button type="button" class="icon-btn" id="closeAuditLogModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="audit-log-toolbar">
+            <span class="mono-caption" id="auditLogCountCaption">0 kayıt</span>
+            <button type="button" class="btn-compact btn-ghost" id="clearAuditLogBtn">Geçmişi Temizle</button>
+          </div>
+          <div class="audit-log-timeline" id="auditLogTimeline"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 11: SAVED DEVICE DETAILS & LONG-PRESS MANAGEMENT MODAL -->
+    <div class="modal-backdrop hidden" id="functionPrefsModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">Özelleştirmeler</h2>
+            <p class="modal-subtitle" id="functionPrefsSubtitle">Bu bilgisayarın düğmeleri nasıl çalışsın</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeFunctionPrefsModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="functionPrefsRows" class="function-prefs-rows"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="deviceDetailModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="deviceDetailTitle">Bilgisayar Detayları</h2>
+            <p class="modal-subtitle" id="deviceDetailSubtitle">Donanım, ağ ve oturum bilgileri</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeDeviceDetailModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="device-detail-grid" id="deviceDetailInfoGrid"></div>
+          <div class="device-detail-actions">
+            <button type="button" class="btn-secondary btn-full" id="detailModalWolBtn">
+              Ağdan Uyandır (Wake-on-LAN)
+            </button>
+            <button type="button" class="btn-secondary btn-full hidden" id="detailModalDisconnectBtn">
+               Aktif Bağlantıyı Kes
+            </button>
+            <button type="button" class="btn-danger btn-full" id="detailModalDeleteBtn">
+              Cihazı Sil (Eşleşmeyi Kaldır)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 12: QUICK TILES CUSTOMIZER (ANLIK MÜDAHALE ÖZELLEŞTİRME) -->
+    <div class="modal-backdrop hidden" id="quickTilesCustomizerModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">Anlık Müdahale Butonları</h2>
+            <p class="modal-subtitle">Görünüm düzenini ve hangi butonların görüntüleneceğini seçin</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeQuickTilesModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Buton Boyutlandırması ve Düzeni</label>
+            <div class="segmented-row" id="quickTilesLayoutSegments">
+              <button type="button" class="segment-btn" data-layout="compact-grid">4'lü Kare</button>
+              <button type="button" class="segment-btn active" data-layout="compact-row">2'li Satır</button>
+              <button type="button" class="segment-btn" data-layout="standard">Geniş</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Görüntülenecek Butonlar</label>
+            <div class="quick-tiles-picker-list" id="quickTilesPickerList"></div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="resetQuickTilesBtn">Varsayılana Dön</button>
+          <button type="button" class="btn-primary" id="saveQuickTilesBtn">Uygula</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOAST FEEDBACK BAR -->
+    <div class="toast-notification hidden" id="toastBar">
+      <span class="toast-dot"></span>
+      <span class="toast-text" id="toastText">İşlem tamamlandı</span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
