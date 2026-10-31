@@ -1,0 +1,12 @@
+{
+  "name": "bridge-pc-agent",
+  "version": "2.17.0",
+  "description": "Bridge PC agent (Windows and Linux)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
