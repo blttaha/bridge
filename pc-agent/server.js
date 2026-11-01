@@ -39,6 +39,7 @@ const DATA_DIR = process.env.TAHABLT_DATA_DIR || defaultDataDir();
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const SCENES_FILE = path.join(DATA_DIR, 'scenes.json');
 const QUICK_ACTIONS_FILE = path.join(DATA_DIR, 'quick-actions.json');
+const MACROS_FILE = path.join(DATA_DIR, 'macros.json');
 const CUSTOM_APPS_FILE = path.join(DATA_DIR, 'custom-apps.json');
 const APP_PREFS_FILE = path.join(DATA_DIR, 'app-prefs.json');
 const FUNCTION_PREFS_FILE = path.join(DATA_DIR, 'function-prefs.json');
@@ -822,6 +823,21 @@ function saveQuickActions(list) {
   writeJsonAtomic(QUICK_ACTIONS_FILE, list);
 }
 
+function loadMacros() {
+  if (fs.existsSync(MACROS_FILE) || fs.existsSync(`${MACROS_FILE}.bak`)) {
+    try {
+      const parsed = readJsonValue(MACROS_FILE);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  if (!fs.existsSync(MACROS_FILE)) writeJsonAtomic(MACROS_FILE, []);
+  return [];
+}
+
+function saveMacros(list) {
+  writeJsonAtomic(MACROS_FILE, list);
+}
+
 function loadCustomApps() {
   if (fs.existsSync(CUSTOM_APPS_FILE) || fs.existsSync(`${CUSTOM_APPS_FILE}.bak`)) {
     try {
@@ -893,9 +909,11 @@ try {
 } catch {}
 let scenes = loadScenes();
 let quickActions = loadQuickActions();
+let macros = loadMacros();
 let customApps = loadCustomApps();
 let appPrefs = loadAppPrefs();
 let functionPrefs = loadFunctionPrefs();
+let monitorsManuallyOff = false;
 
 // Deterministic private rendezvous topic for Tailscale-free 4.5G/5G Mobile Data discovery
 const SYNC_TOPIC =
@@ -1667,6 +1685,44 @@ async function executeQuickAction(qa, onProgress) {
   };
 }
 
+async function executeMacro(macro) {
+  const startedAt = Date.now();
+  const steps = Array.isArray(macro.steps) ? macro.steps : [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i] || {};
+    const stepType = String(step.type || 'key').toLowerCase();
+    if (stepType === 'delay') {
+      const ms = Math.max(10, Math.min(30000, Number(step.value || 100)));
+      await new Promise((r) => setTimeout(r, ms));
+    } else if (stepType === 'text') {
+      const txt = String(step.value || '');
+      if (txt) {
+        await bridge.call('send_input', { type: 'text', text: txt }, 3000).catch(() => {});
+      }
+      if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    } else {
+      const keyStr = String(step.value || '').trim().toUpperCase();
+      if (keyStr) {
+        await bridge.call('send_input', { type: 'key', key: keyStr }, 2000).catch(() => {});
+      }
+      if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    }
+  }
+  macro.runCount = Number(macro.runCount || 0) + 1;
+  macro.lastRunAt = new Date().toISOString();
+  saveMacros(macros);
+  return {
+    id: macro.id,
+    name: macro.name,
+    elapsedMs: Date.now() - startedAt,
+    stepCount: steps.length
+  };
+}
+
 // Wake-on-LAN Magic Packet Sender
 function sendWakeOnLan(macAddress, broadcastAddress = '255.255.255.255') {
   return new Promise((resolve, reject) => {
@@ -2295,6 +2351,45 @@ const handleHttpRequest = async (req, res) => {
           const targetQa = quickActions.find((q) => q.id === params.id);
           if (!targetQa) throw new Error('Hızlı erişim butonu bulunamadı.');
           resultData = await executeQuickAction(targetQa);
+        } else if (action === 'run_macro') {
+          const targetMacro = macros.find((m) => m.id === params.id);
+          if (!targetMacro) throw new Error('Makro bulunamadı.');
+          resultData = await executeMacro(targetMacro);
+          broadcastStateUpdate('macros_updated', macros);
+        } else if (action === 'save_macro') {
+          const incoming = params.macro || params;
+          if (!incoming || !incoming.name) throw new Error('Makro adı gerekli.');
+          const rawSteps = Array.isArray(incoming.steps) ? incoming.steps : [];
+          if (rawSteps.length === 0) throw new Error('En az 1 makro adımı eklemelisiniz.');
+          const formattedSteps = rawSteps
+            .map((s) => ({
+              id: s.id || crypto.randomUUID(),
+              type: ['key', 'text', 'delay'].includes(String(s.type || '').toLowerCase()) ? String(s.type).toLowerCase() : 'key',
+              value: String(s.value ?? '').trim()
+            }))
+            .filter((s) => Boolean(s.value));
+          if (formattedSteps.length === 0) throw new Error('En az 1 geçerli makro adımı gerekli.');
+          const existingIdx = macros.findIndex((m) => m.id === incoming.id);
+          const prev = existingIdx >= 0 ? macros[existingIdx] : null;
+          const formatted = {
+            id: incoming.id || crypto.randomUUID(),
+            name: String(incoming.name).trim(),
+            createdAt: (prev && prev.createdAt) || incoming.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastRunAt: (prev && prev.lastRunAt) || null,
+            runCount: Number((prev && prev.runCount) || 0),
+            steps: formattedSteps
+          };
+          if (existingIdx >= 0) macros[existingIdx] = formatted;
+          else macros.unshift(formatted);
+          saveMacros(macros);
+          broadcastStateUpdate('macros_updated', macros);
+          resultData = { macro: formatted, macros };
+        } else if (action === 'delete_macro') {
+          macros = macros.filter((m) => m.id !== params.id);
+          saveMacros(macros);
+          broadcastStateUpdate('macros_updated', macros);
+          resultData = { macros };
         } else if (action === 'run_scene') {
           const target = scenes.find((s) => s.id === params.sceneId);
           if (!target) throw new Error('Sahne bulunamadı.');
@@ -2343,6 +2438,7 @@ const handleHttpRequest = async (req, res) => {
             customApps,
             scenes,
             quickActions,
+            macros,
             audio,
             stats,
             powerTimer: powerTimerState
@@ -2406,6 +2502,7 @@ function runSystemCommand(file, args) {
 }
 
 async function setMonitorsOff() {
+  monitorsManuallyOff = true;
   if (functionPrefs.monitorsOff === 'blackout') {
     let monitors = await bridge.call('get_monitors').catch(() => []);
     const count = Array.isArray(monitors) ? monitors.length : 0;
@@ -2421,6 +2518,7 @@ async function setMonitorsOff() {
 function runMonitorPower(params) {
   const p = params || {};
   if (p.action === 'off') return setMonitorsOff();
+  monitorsManuallyOff = false;
   // Black curtains from the "blackout" style must also go away when the screens are switched back on
   if (functionPrefs.monitorsOff === 'blackout') return bridge.call('monitor_power', { ...p, clearBlackouts: true });
   return bridge.call('monitor_power', p);
@@ -2429,14 +2527,28 @@ function runMonitorPower(params) {
 async function runLockAction(kind) {
   const mode = functionPrefs.lock;
   // Linux has a single (loginctl) session lock that the phone can also unlock, so every style maps to it
-  if (!IS_WINDOWS || mode === 'custom' || kind === 'unlock') return bridge.call('system_control', { action: kind });
+  if (!IS_WINDOWS || mode === 'custom' || kind === 'unlock') {
+    const r = await bridge.call('system_control', { action: kind });
+    if (monitorsManuallyOff && functionPrefs.monitorsOff !== 'blackout') {
+      setTimeout(() => bridge.call('monitor_power', { action: 'off' }).catch(() => {}), 220);
+    }
+    return r;
+  }
   const stats = await bridge.call('system_control', { action: 'stats' }).catch(() => ({}));
   if (kind === 'toggle_lock' && stats && stats.isLocked) {
-    return bridge.call('system_control', { action: 'unlock' });
+    const r = await bridge.call('system_control', { action: 'unlock' });
+    if (monitorsManuallyOff && functionPrefs.monitorsOff !== 'blackout') {
+      setTimeout(() => bridge.call('monitor_power', { action: 'off' }).catch(() => {}), 220);
+    }
+    return r;
   }
   let res = { ok: true, isLocked: false };
   if (mode === 'both') res = await bridge.call('system_control', { action: 'lock' });
   await runSystemCommand('rundll32.exe', ['user32.dll,LockWorkStation']);
+  if (monitorsManuallyOff && functionPrefs.monitorsOff !== 'blackout') {
+    setTimeout(() => bridge.call('monitor_power', { action: 'off' }).catch(() => {}), 260);
+    setTimeout(() => bridge.call('monitor_power', { action: 'off' }).catch(() => {}), 650);
+  }
   return {
     ...res,
     action: 'lock',
@@ -3240,6 +3352,7 @@ wss.on('connection', (ws, req) => {
           customApps,
           scenes,
           quickActions,
+          macros,
           audio,
           stats,
           powerTimer: powerTimerState,
@@ -3293,6 +3406,7 @@ wss.on('connection', (ws, req) => {
             customApps,
             scenes,
             quickActions,
+            macros,
             audio,
             stats,
             powerTimer: powerTimerState,
@@ -3557,6 +3671,52 @@ wss.on('connection', (ws, req) => {
           broadcastStateUpdate('windows_updated', windows);
           broadcastStateUpdate('quick_actions_updated', quickActions);
           return reply(true, { ...execRes, quickActions, windows });
+        }
+
+        case 'save_macro': {
+          const incoming = params.macro || params;
+          if (!incoming || !incoming.name) throw new Error('Makro adı gerekli.');
+          const rawSteps = Array.isArray(incoming.steps) ? incoming.steps : [];
+          if (rawSteps.length === 0) throw new Error('En az 1 makro adımı eklemelisiniz.');
+          const formattedSteps = rawSteps
+            .map((s) => ({
+              id: s.id || crypto.randomUUID(),
+              type: ['key', 'text', 'delay'].includes(String(s.type || '').toLowerCase()) ? String(s.type).toLowerCase() : 'key',
+              value: String(s.value ?? '').trim()
+            }))
+            .filter((s) => Boolean(s.value));
+          if (formattedSteps.length === 0) throw new Error('En az 1 geçerli makro adımı gerekli.');
+          const existingIdx = macros.findIndex((m) => m.id === incoming.id);
+          const prev = existingIdx >= 0 ? macros[existingIdx] : null;
+          const formatted = {
+            id: incoming.id || crypto.randomUUID(),
+            name: String(incoming.name).trim(),
+            createdAt: (prev && prev.createdAt) || incoming.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastRunAt: (prev && prev.lastRunAt) || null,
+            runCount: Number((prev && prev.runCount) || 0),
+            steps: formattedSteps
+          };
+          if (existingIdx >= 0) macros[existingIdx] = formatted;
+          else macros.unshift(formatted);
+          saveMacros(macros);
+          broadcastStateUpdate('macros_updated', macros);
+          return reply(true, { macro: formatted, macros });
+        }
+
+        case 'delete_macro': {
+          macros = macros.filter((m) => m.id !== params.id);
+          saveMacros(macros);
+          broadcastStateUpdate('macros_updated', macros);
+          return reply(true, { macros });
+        }
+
+        case 'run_macro': {
+          const targetMacro = macros.find((m) => m.id === params.id);
+          if (!targetMacro) throw new Error('Makro bulunamadı.');
+          const execRes = await executeMacro(targetMacro);
+          broadcastStateUpdate('macros_updated', macros);
+          return reply(true, { ...execRes, macros });
         }
 
         case 'run_single_item': {

@@ -1292,23 +1292,52 @@ namespace TahaBLT
             return list;
         }
 
+        private static bool monitorsManuallyOff = false;
+
+        private static void ReassertMonitorsOffIfNeeded()
+        {
+            if (!monitorsManuallyOff) return;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    Thread.Sleep(110);
+                    if (monitorsManuallyOff)
+                    {
+                        PostMessage(HWND_BROADCAST, WM_SYSCOMMAND, new IntPtr(SC_MONITORPOWER), new IntPtr(2));
+                    }
+                    Thread.Sleep(320);
+                    if (monitorsManuallyOff)
+                    {
+                        PostMessage(HWND_BROADCAST, WM_SYSCOMMAND, new IntPtr(SC_MONITORPOWER), new IntPtr(2));
+                    }
+                }
+                catch { }
+            });
+        }
+
         private static object HandleMonitorPower(Dictionary<string, object> args)
         {
             string action = args.ContainsKey("action") ? Convert.ToString(args["action"]) : "off";
             if (action == "off")
             {
+                monitorsManuallyOff = true;
                 // Ensure system and network stay awake in Away Mode while displays are powered down
                 try { SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000040); } catch { }
                 ThreadPool.QueueUserWorkItem(_ =>
                 {
                     try { SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000040); } catch { }
                     Thread.Sleep(80);
-                    PostMessage(HWND_BROADCAST, WM_SYSCOMMAND, new IntPtr(SC_MONITORPOWER), new IntPtr(2));
+                    if (monitorsManuallyOff)
+                    {
+                        PostMessage(HWND_BROADCAST, WM_SYSCOMMAND, new IntPtr(SC_MONITORPOWER), new IntPtr(2));
+                    }
                 });
                 return new { status = "monitors_sleeping" };
             }
             else
             {
+                monitorsManuallyOff = false;
                 // Wake up monitors from deep DPMS standby immediately without blocking
                 Action wakePulse = () =>
                 {
@@ -4773,9 +4802,9 @@ namespace TahaBLT
                 });
             }
 
-            if (!lockPc)
+            if (monitorsManuallyOff)
             {
-                HandleMonitorPower(new Dictionary<string, object> { { "action", "on" }, { "clearBlackouts", true } });
+                ReassertMonitorsOffIfNeeded();
             }
         }
 
@@ -6351,13 +6380,16 @@ namespace TahaBLT
                     return new { ok = true, action = "restart" };
                 case "show_desktop":
                     SendKeyCombo("WIN+D");
+                    ReassertMonitorsOffIfNeeded();
                     return new { ok = true, action = "show_desktop" };
                 case "task_manager":
                     SendKeyCombo("CTRL+SHIFT+ESC");
+                    ReassertMonitorsOffIfNeeded();
                     return new { ok = true, action = "task_manager" };
                 case "media_key":
                     string mKey = args.ContainsKey("key") ? Convert.ToString(args["key"]).ToUpperInvariant() : "MEDIA_PLAY_PAUSE";
                     ExecuteMediaCommand(mKey);
+                    ReassertMonitorsOffIfNeeded();
                     return new { ok = true, key = mKey };
                 case "set_brightness":
                     int bVal = args.ContainsKey("brightness")
@@ -6368,6 +6400,7 @@ namespace TahaBLT
                     return new { ok = true, monitorIndex = bMonIdx, brightness = bVal, monitors = GetMonitorsList() };
                 case "empty_recycle_bin":
                     try { SHEmptyRecycleBin(IntPtr.Zero, null, 0x0001 | 0x0002 | 0x0004); } catch { }
+                    ReassertMonitorsOffIfNeeded();
                     return new { ok = true, action = "empty_recycle_bin" };
                 case "optimize_memory":
                     int trimmedCount = 0;

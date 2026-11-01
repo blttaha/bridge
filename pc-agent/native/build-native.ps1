@@ -6,6 +6,15 @@ $Fw = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
 $Csc = Join-Path $Fw "csc.exe"
 $SysRuntime = Get-ChildItem "$env:WINDIR\Microsoft.NET\assembly\GAC_MSIL\System.Runtime" -Recurse -Filter System.Runtime.dll | Select-Object -First 1
 
+Remove-Item "$Here\BridgeHelper.exe.old" -Force -ErrorAction SilentlyContinue
+if (Test-Path "$Here\BridgeHelper.exe") {
+  Move-Item "$Here\BridgeHelper.exe" "$Here\BridgeHelper.exe.old" -Force -ErrorAction SilentlyContinue
+}
+Remove-Item "$Root\Bridge.exe.old" -Force -ErrorAction SilentlyContinue
+if (Test-Path "$Root\Bridge.exe") {
+  Move-Item "$Root\Bridge.exe" "$Root\Bridge.exe.old" -Force -ErrorAction SilentlyContinue
+}
+
 & $Csc -nologo -unsafe -optimize+ -platform:x64 -target:exe "-win32icon:$Here\app.ico" `
   "-out:$Here\BridgeHelper.exe" `
   -r:System.Web.Extensions.dll -r:System.Drawing.dll -r:System.Windows.Forms.dll -r:System.Management.dll `

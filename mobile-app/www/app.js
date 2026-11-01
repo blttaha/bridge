@@ -95,6 +95,7 @@
     monitors: [],
     windows: [],
     scenes: [],
+    macros: [],
     quickActions: [],
     installedApps: [],
     audio: { masterVolume: 100, masterMuted: false, sessions: [] },
@@ -117,6 +118,11 @@
     qaItemSource: 'file',
     qaItems: [],
     qaSelectedFileMeta: null,
+
+    // Macro Composer state
+    editingMacroId: null,
+    macroSteps: [],
+    macroActiveMods: [],
 
     // PC File System Browser state
     fsBrowserMode: 'browse', // 'browse' or 'pick_for_qa'
@@ -164,7 +170,7 @@
     mediaTimelineTickTimer: null
   };
 
-  const TAB_ORDER = ['tab-scenes', 'tab-apps', 'tab-remote', 'tab-system'];
+  const TAB_ORDER = ['tab-scenes', 'tab-macros', 'tab-apps', 'tab-remote', 'tab-system'];
   const HUB_TAB_ORDER = ['hub-tab-devices', 'hub-tab-settings'];
   const modalCloseTimers = new Map();
 
@@ -224,6 +230,15 @@
 
     const prevTab = state.activeTab;
     state.activeTab = targetTab;
+
+    if (prevTab !== targetTab) {
+      const appsSearchEl = document.getElementById('appsTabSearchInput');
+      if ((appsSearchEl && appsSearchEl.value) || state.appsSearchQuery) {
+        if (appsSearchEl) appsSearchEl.value = '';
+        state.appsSearchQuery = '';
+        renderAppsTab();
+      }
+    }
 
     const stepPercent = 100 / TAB_ORDER.length;
     const track = document.getElementById('workspaceTabsTrack');
@@ -313,25 +328,12 @@
       setRemoteFullscreen(false);
       return true;
     }
-    const modals = [
-      'deviceDetailModal',
-      'connectionAuditLogModal',
-      'universalPropertiesModal',
-      'pcFileBrowserModal',
-      'addCustomAppModal',
-      'quickActionComposerModal',
-      'windowSnapModal',
-      'sceneComposerModal',
-      'appAudioMixerModal',
-      'clipboardHistoryModal',
-      'deviceSheetModal'
-    ];
-    for (const id of modals) {
-      const el = document.getElementById(id);
-      if (el && (el.classList.contains('is-open') || !el.classList.contains('hidden'))) {
-        closeModal(el);
-        return true;
-      }
+    const openModals = Array.from(document.querySelectorAll('.modal-backdrop')).filter(
+      (el) => el.classList.contains('is-open') || !el.classList.contains('hidden')
+    );
+    if (openModals.length > 0) {
+      closeModal(openModals[openModals.length - 1]);
+      return true;
     }
     if (state.showingHubView) {
       if (state.activeHubTab === 'hub-tab-settings') {
@@ -568,6 +570,7 @@
     state.monitors = [];
     state.windows = [];
     state.scenes = [];
+    state.macros = [];
     state.quickActions = [];
     state.installedApps = [];
     state.customApps = [];
@@ -688,6 +691,7 @@
         deviceId: dev.deviceId,
         monitors: state.monitors,
         scenes: state.scenes,
+        macros: state.macros,
         quickActions: state.quickActions,
         customApps: state.customApps,
         installedApps: (state.installedApps || []).slice(0, 120)
@@ -706,6 +710,7 @@
       if (!parsed || typeof parsed !== 'object' || (parsed.deviceId && parsed.deviceId !== devId)) return false;
       if (Array.isArray(parsed.monitors) && parsed.monitors.length) state.monitors = parsed.monitors;
       if (Array.isArray(parsed.scenes)) state.scenes = parsed.scenes;
+      if (Array.isArray(parsed.macros)) state.macros = parsed.macros;
       if (Array.isArray(parsed.quickActions)) state.quickActions = parsed.quickActions;
       if (Array.isArray(parsed.customApps)) state.customApps = parsed.customApps;
       if (Array.isArray(parsed.installedApps)) state.installedApps = parsed.installedApps;
@@ -1409,6 +1414,9 @@
       } else if (msg.type === 'scenes_updated') {
         state.scenes = Array.isArray(msg.payload) ? msg.payload : [];
         renderScenesList();
+      } else if (msg.type === 'macros_updated') {
+        state.macros = Array.isArray(msg.payload) ? msg.payload : [];
+        renderMacrosList();
       } else if (msg.type === 'quick_actions_updated') {
         state.quickActions = Array.isArray(msg.payload) ? msg.payload : [];
         renderQuickActionsList();
@@ -1515,6 +1523,7 @@
         state.monitors = Array.isArray(res.monitors) ? res.monitors : [];
         state.windows = Array.isArray(res.windows) ? res.windows : [];
         state.scenes = Array.isArray(res.scenes) ? res.scenes : [];
+        state.macros = Array.isArray(res.macros) ? res.macros : [];
         state.quickActions = Array.isArray(res.quickActions) ? res.quickActions : [];
         if (Array.isArray(res.customApps)) state.customApps = res.customApps;
         if (res.audio) {
@@ -1691,6 +1700,9 @@
     'snapshot_scene',
     'save_scene',
     'delete_scene',
+    'save_macro',
+    'delete_macro',
+    'run_macro',
     'save_quick_action',
     'delete_quick_action',
     'duplicate_quick_action',
@@ -1985,6 +1997,7 @@
     renderLockStateUi();
     renderQuickActionsList();
     renderScenesList();
+    renderMacrosList();
     renderAppsTab();
     renderMonitorsTab();
     renderMonitorsBrightnessList();
@@ -2385,6 +2398,153 @@
               <span>Sahneyi Uygula</span>
             </button>
           </article>
+        `;
+      })
+      .join('');
+  }
+
+  function formatMacroStepBadge(step) {
+    if (!step) return '';
+    if (step.type === 'text') {
+      const txt = String(step.value || '');
+      return `METİN: "${txt.length > 18 ? txt.slice(0, 18) + '…' : txt}"`;
+    }
+    if (step.type === 'delay') {
+      return `BEKLE: ${Number(step.delayMs || step.value || 100)} ms`;
+    }
+    return String(step.value || '').toUpperCase();
+  }
+
+  function renderMacrosList() {
+    const emptyEl = document.getElementById('macrosEmptyState');
+    const listEl = document.getElementById('macrosListContainer');
+    if (!emptyEl || !listEl) return;
+
+    const list = Array.isArray(state.macros) ? state.macros : [];
+    if (!list.length) {
+      emptyEl.classList.remove('hidden');
+      listEl.classList.add('hidden');
+      listEl.innerHTML = '';
+      return;
+    }
+
+    emptyEl.classList.add('hidden');
+    listEl.classList.remove('hidden');
+
+    listEl.innerHTML = list
+      .map((m) => {
+        const steps = Array.isArray(m.steps) ? m.steps : [];
+        const badges = steps
+          .slice(0, 4)
+          .map((s) => formatMacroStepBadge(s))
+          .filter(Boolean)
+          .join(' → ');
+        const moreTxt = steps.length > 4 ? ` +${steps.length - 4}` : '';
+        return `
+          <div class="macro-card" data-macro-id="${escapeHtml(m.id)}">
+            <div class="macro-card-left" data-run-macro="${escapeHtml(m.id)}">
+              <div class="macro-key-icon">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+                  <rect x="2.5" y="4.5" width="15" height="11" rx="2" />
+                  <path d="M6 8h1.5M9.25 8h1.5M12.5 8H14M6 12h8" />
+                </svg>
+              </div>
+              <div class="macro-card-info">
+                <span class="macro-card-title">${escapeHtml(m.name || 'Makro')}</span>
+                <span class="macro-card-seq">${escapeHtml((badges || `${steps.length} adım`) + moreTxt)}</span>
+              </div>
+            </div>
+            <div class="macro-card-actions">
+              <button
+                type="button"
+                class="icon-action-btn"
+                data-edit-macro="${escapeHtml(m.id)}"
+                title="Makroyu Düzenle"
+                aria-label="Makroyu Düzenle"
+              >
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M13.5 3.8a1.8 1.8 0 0 1 2.5 2.5L7.2 15.1 3.5 16l.9-3.7 9.1-8.5z" stroke-linejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="btn-primary btn-compact"
+                data-run-macro="${escapeHtml(m.id)}"
+              >
+                Çalıştır
+              </button>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+  }
+
+  function openMacroComposer(existingMacro) {
+    state.editingMacroId = existingMacro ? existingMacro.id : null;
+    state.macroSteps =
+      existingMacro && Array.isArray(existingMacro.steps)
+        ? JSON.parse(JSON.stringify(existingMacro.steps))
+        : [];
+    state.macroActiveMods = [];
+
+    const titleEl = document.getElementById('macroModalTitle');
+    if (titleEl) {
+      titleEl.textContent = existingMacro ? 'Makroyu Düzenle' : 'Makro / Tuş Ataması Oluştur';
+    }
+    const nameInput = document.getElementById('macroNameInput');
+    if (nameInput) nameInput.value = existingMacro ? existingMacro.name || '' : '';
+
+    const keyInput = document.getElementById('macroCustomKeyInput');
+    if (keyInput) keyInput.value = '';
+
+    const textInput = document.getElementById('macroTextStepInput');
+    if (textInput) textInput.value = '';
+
+    const delBtn = document.getElementById('deleteMacroModalBtn');
+    if (delBtn) delBtn.classList.toggle('hidden', !existingMacro);
+
+    document.querySelectorAll('#macroModPills .macro-mod-pill').forEach((b) => b.classList.remove('active'));
+    renderMacroComposerSteps();
+    openModal('macroComposerModal');
+  }
+
+  function renderMacroComposerSteps() {
+    const badge = document.getElementById('macroStepsCountBadge');
+    const listEl = document.getElementById('macroStepsEditorList');
+    if (badge) badge.textContent = `${state.macroSteps.length} Adım`;
+    if (!listEl) return;
+
+    if (!state.macroSteps.length) {
+      listEl.innerHTML = `<p class="section-subtitle">Henüz adım eklenmedi. Yukarıdan tuş kombinasyonu, metin veya bekleme ekleyin.</p>`;
+      return;
+    }
+
+    listEl.innerHTML = state.macroSteps
+      .map((step, idx) => {
+        const typeLabel = step.type === 'text' ? 'METİN' : step.type === 'delay' ? 'BEKLE' : 'TUŞ';
+        const valLabel =
+          step.type === 'delay'
+            ? `${Number(step.delayMs || step.value || 100)} ms`
+            : String(step.value || '');
+        return `
+          <div class="macro-step-row">
+            <div class="macro-step-row-left">
+              <span class="macro-step-badge">${typeLabel}</span>
+              <span class="macro-step-val">${escapeHtml(valLabel)}</span>
+            </div>
+            <button
+              type="button"
+              class="icon-action-btn danger"
+              data-remove-macro-step="${idx}"
+              title="Adımı Sil"
+              aria-label="Adımı Sil"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
         `;
       })
       .join('');
@@ -3301,10 +3461,15 @@
   }
 
   function updateStreamUiState() {
+    const wsEl = document.getElementById('remoteWorkstation');
     const placeholder = document.getElementById('remotePlaceholder');
     const canvas = getRemoteCanvas();
     const fpsBadge = document.getElementById('remoteFpsBadge');
     const toggleBtn = document.getElementById('toggleStreamHeaderBtn');
+
+    if (wsEl) {
+      wsEl.classList.toggle('is-screen-off', !state.isStreaming);
+    }
 
     if (toggleBtn) {
       toggleBtn.textContent = state.isStreaming ? 'Ekranı Kapat' : 'Ekranı Aç';
@@ -5701,7 +5866,14 @@
     viewport.addEventListener(
       'touchstart',
       (e) => {
-        if (e.target.closest('.remote-floating-hud') || e.target.closest('.remote-scroll-strip') || e.target.closest('#startStreamBtn') || e.target.closest('.remote-overlay-badges')) {
+        if (
+          e.target.closest('.remote-floating-hud') ||
+          e.target.closest('.remote-scroll-strip') ||
+          e.target.closest('#startStreamBtn') ||
+          e.target.closest('#laptopTouchpadButtons') ||
+          e.target.closest('.laptop-touchpad-buttons') ||
+          e.target.closest('.remote-overlay-badges')
+        ) {
           return;
         }
         e.preventDefault();
@@ -5778,7 +5950,14 @@
     viewport.addEventListener(
       'touchmove',
       (e) => {
-        if (e.target.closest('.remote-floating-hud') || e.target.closest('.remote-scroll-strip') || e.target.closest('#startStreamBtn') || e.target.closest('.remote-overlay-badges')) {
+        if (
+          e.target.closest('.remote-floating-hud') ||
+          e.target.closest('.remote-scroll-strip') ||
+          e.target.closest('#startStreamBtn') ||
+          e.target.closest('#laptopTouchpadButtons') ||
+          e.target.closest('.laptop-touchpad-buttons') ||
+          e.target.closest('.remote-overlay-badges')
+        ) {
           return;
         }
         e.preventDefault();
@@ -6111,7 +6290,7 @@
     });
   }
 
-  // HORIZONTAL SWIPE PAGER ENGINE ACROSS ALL 4 WORKSPACE TABS
+  // HORIZONTAL SWIPE PAGER ENGINE ACROSS ALL 5 WORKSPACE TABS
   function bindWorkspaceHorizontalSwipeEngine() {
     const workspaceEl = document.getElementById('view-connected-workspace');
     const trackEl = document.getElementById('workspaceTabsTrack');
@@ -6120,6 +6299,7 @@
     if (!workspaceEl || !trackEl || !swipeSurfaceEl) return;
 
     let tracking = false;
+    let activeTouchId = null;
     let axisLocked = null; // 'x' | 'y' | null
     let startX = 0;
     let startY = 0;
@@ -6127,15 +6307,59 @@
     let startTime = 0;
     let startTabIdx = 0;
 
+    const finishSwipe = () => {
+      if (!tracking) {
+        if (trackEl.classList.contains('is-dragging')) {
+          trackEl.classList.remove('is-dragging');
+          if (indicatorEl) indicatorEl.style.transition = '';
+          switchToTab(state.activeTab, true);
+        }
+        axisLocked = null;
+        activeTouchId = null;
+        return;
+      }
+      tracking = false;
+      activeTouchId = null;
+      if (axisLocked !== 'x') {
+        axisLocked = null;
+        return;
+      }
+
+      trackEl.classList.remove('is-dragging');
+      if (indicatorEl) indicatorEl.style.transition = '';
+
+      const viewW = Math.max(300, workspaceEl.clientWidth || window.innerWidth || 360);
+      const elapsed = Math.max(1, performance.now() - startTime);
+      const velocityX = lastDx / elapsed; // px per ms
+      const shouldAdvance = Math.abs(lastDx) > viewW * 0.2 || Math.abs(velocityX) > 0.36;
+
+      let targetIdx = startTabIdx;
+      if (shouldAdvance) {
+        if (lastDx < 0 && startTabIdx < TAB_ORDER.length - 1) {
+          targetIdx = startTabIdx + 1;
+        } else if (lastDx > 0 && startTabIdx > 0) {
+          targetIdx = startTabIdx - 1;
+        }
+      }
+
+      switchToTab(TAB_ORDER[targetIdx], true);
+      axisLocked = null;
+    };
+
     swipeSurfaceEl.addEventListener(
       'touchstart',
       (e) => {
-        if (workspaceEl.classList.contains('hidden') || e.touches.length !== 1) {
-          tracking = false;
+        if (workspaceEl.classList.contains('hidden')) {
+          finishSwipe();
+          return;
+        }
+        // If a 2nd finger touches while dragging, snap cleanly instead of freezing mid-swipe
+        if (e.touches.length !== 1) {
+          finishSwipe();
           return;
         }
         if (document.body.classList.contains('modal-open') || state.isFullscreen) {
-          tracking = false;
+          finishSwipe();
           return;
         }
         // Do not hijack touch inside the interactive Remote Desktop / Trackpad viewport or range sliders / horizontal pills
@@ -6144,12 +6368,13 @@
           e.target.closest('input[type="range"]') ||
           e.target.closest('.monitor-pill-row')
         ) {
-          tracking = false;
+          finishSwipe();
           return;
         }
 
         const t = e.touches[0];
         tracking = true;
+        activeTouchId = t.identifier;
         axisLocked = null;
         startX = t.clientX;
         startY = t.clientY;
@@ -6163,7 +6388,11 @@
     swipeSurfaceEl.addEventListener(
       'touchmove',
       (e) => {
-        if (!tracking || e.touches.length !== 1) return;
+        if (!tracking) return;
+        if (e.touches.length !== 1 || e.touches[0].identifier !== activeTouchId) {
+          finishSwipe();
+          return;
+        }
         const t = e.touches[0];
         const dx = t.clientX - startX;
         const dy = t.clientY - startY;
@@ -6177,6 +6406,7 @@
           } else {
             axisLocked = 'y';
             tracking = false;
+            activeTouchId = null;
             return;
           }
         }
@@ -6204,32 +6434,6 @@
       { passive: false }
     );
 
-    const finishSwipe = () => {
-      if (!tracking) return;
-      tracking = false;
-      if (axisLocked !== 'x') return;
-
-      trackEl.classList.remove('is-dragging');
-      if (indicatorEl) indicatorEl.style.transition = '';
-
-      const viewW = Math.max(300, workspaceEl.clientWidth || window.innerWidth || 360);
-      const elapsed = Math.max(1, performance.now() - startTime);
-      const velocityX = lastDx / elapsed; // px per ms
-      const shouldAdvance = Math.abs(lastDx) > viewW * 0.2 || Math.abs(velocityX) > 0.36;
-
-      let targetIdx = startTabIdx;
-      if (shouldAdvance) {
-        if (lastDx < 0 && startTabIdx < TAB_ORDER.length - 1) {
-          targetIdx = startTabIdx + 1;
-        } else if (lastDx > 0 && startTabIdx > 0) {
-          targetIdx = startTabIdx - 1;
-        }
-      }
-
-      switchToTab(TAB_ORDER[targetIdx], true);
-      axisLocked = null;
-    };
-
     swipeSurfaceEl.addEventListener('touchend', finishSwipe, { passive: true });
     swipeSurfaceEl.addEventListener('touchcancel', finishSwipe, { passive: true });
   }
@@ -6243,6 +6447,7 @@
     if (!hubViewEl || !trackEl || !swipeSurfaceEl) return;
 
     let tracking = false;
+    let activeTouchId = null;
     let axisLocked = null;
     let startX = 0;
     let startY = 0;
@@ -6250,19 +6455,59 @@
     let startTime = 0;
     let startTabIdx = 0;
 
+    const finishSwipe = () => {
+      if (!tracking) {
+        if (trackEl.classList.contains('is-dragging')) {
+          trackEl.classList.remove('is-dragging');
+          if (indicatorEl) indicatorEl.style.transition = '';
+          switchToHubTab(state.activeHubTab, true);
+        }
+        axisLocked = null;
+        activeTouchId = null;
+        return;
+      }
+      tracking = false;
+      activeTouchId = null;
+      if (axisLocked !== 'x') {
+        axisLocked = null;
+        return;
+      }
+
+      trackEl.classList.remove('is-dragging');
+      if (indicatorEl) indicatorEl.style.transition = '';
+
+      const viewW = Math.max(300, hubViewEl.clientWidth || window.innerWidth || 360);
+      const elapsed = Math.max(1, performance.now() - startTime);
+      const velocityX = lastDx / elapsed;
+      const shouldAdvance = Math.abs(lastDx) > viewW * 0.2 || Math.abs(velocityX) > 0.36;
+
+      let targetIdx = startTabIdx;
+      if (shouldAdvance) {
+        if (lastDx < 0 && startTabIdx < HUB_TAB_ORDER.length - 1) {
+          targetIdx = startTabIdx + 1;
+        } else if (lastDx > 0 && startTabIdx > 0) {
+          targetIdx = startTabIdx - 1;
+        }
+      }
+
+      switchToHubTab(HUB_TAB_ORDER[targetIdx], true);
+      axisLocked = null;
+    };
+
     swipeSurfaceEl.addEventListener(
       'touchstart',
       (e) => {
         if (hubViewEl.classList.contains('hidden') || e.touches.length !== 1) {
-          tracking = false;
+          finishSwipe();
           return;
         }
         if (document.body.classList.contains('modal-open')) {
-          tracking = false;
+          finishSwipe();
           return;
         }
         const t = e.touches[0];
         tracking = true;
+        activeTouchId = t.identifier;
         axisLocked = null;
         startX = t.clientX;
         startY = t.clientY;
@@ -6276,7 +6521,11 @@
     swipeSurfaceEl.addEventListener(
       'touchmove',
       (e) => {
-        if (!tracking || hubViewEl.classList.contains('hidden') || e.touches.length !== 1) return;
+        if (!tracking || hubViewEl.classList.contains('hidden')) return;
+        if (e.touches.length !== 1 || e.touches[0].identifier !== activeTouchId) {
+          finishSwipe();
+          return;
+        }
         const t = e.touches[0];
         const dx = t.clientX - startX;
         const dy = t.clientY - startY;
@@ -6290,6 +6539,7 @@
           } else {
             axisLocked = 'y';
             tracking = false;
+            activeTouchId = null;
             return;
           }
         }
@@ -6316,32 +6566,6 @@
       },
       { passive: false }
     );
-
-    const finishSwipe = () => {
-      if (!tracking) return;
-      tracking = false;
-      if (axisLocked !== 'x') return;
-
-      trackEl.classList.remove('is-dragging');
-      if (indicatorEl) indicatorEl.style.transition = '';
-
-      const viewW = Math.max(300, hubViewEl.clientWidth || window.innerWidth || 360);
-      const elapsed = Math.max(1, performance.now() - startTime);
-      const velocityX = lastDx / elapsed;
-      const shouldAdvance = Math.abs(lastDx) > viewW * 0.2 || Math.abs(velocityX) > 0.36;
-
-      let targetIdx = startTabIdx;
-      if (shouldAdvance) {
-        if (lastDx < 0 && startTabIdx < HUB_TAB_ORDER.length - 1) {
-          targetIdx = startTabIdx + 1;
-        } else if (lastDx > 0 && startTabIdx > 0) {
-          targetIdx = startTabIdx - 1;
-        }
-      }
-
-      switchToHubTab(HUB_TAB_ORDER[targetIdx], true);
-      axisLocked = null;
-    };
 
     swipeSurfaceEl.addEventListener('touchend', finishSwipe, { passive: true });
     swipeSurfaceEl.addEventListener('touchcancel', finishSwipe, { passive: true });
@@ -6455,7 +6679,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.18.0';
+    let currentAppVer = '2.19.0';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -6717,6 +6941,7 @@
           state.monitors = res.monitors || [];
           state.windows = res.windows || [];
           state.scenes = res.scenes || [];
+          state.macros = res.macros || [];
           state.quickActions = res.quickActions || [];
           if (res.audio) state.audio = reconcileMediaIntent(res.audio);
           if (res.stats) {
@@ -8575,14 +8800,17 @@
     });
 
     // TAB 4: AUDIO MIXER, POWER TIMER, CLIPBOARD & POWER
-    document.getElementById('refreshAudioBtn').addEventListener('click', async () => {
-      triggerHaptic(10);
-      try {
-        const audio = await sendCommand('audio_control', { action: 'get' });
-        state.audio = reconcileMediaIntent(audio);
-        renderAudioTab();
-      } catch {}
-    });
+    const refreshAudioBtnEl = document.getElementById('refreshAudioBtn');
+    if (refreshAudioBtnEl) {
+      refreshAudioBtnEl.addEventListener('click', async () => {
+        triggerHaptic(10);
+        try {
+          const audio = await sendCommand('audio_control', { action: 'get' });
+          state.audio = reconcileMediaIntent(audio);
+          renderAudioTab();
+        } catch {}
+      });
+    }
 
     const masterSlider = document.getElementById('masterVolumeSlider');
     masterSlider.addEventListener('input', () => {
@@ -8869,24 +9097,218 @@
       });
     }
 
-    // SCENES MANAGER MODAL (FROM HIZLI ERİŞİM)
-    const openScenesManagerModalBtn = document.getElementById('openScenesManagerModalBtn');
-    if (openScenesManagerModalBtn) {
-      openScenesManagerModalBtn.addEventListener('click', () => {
+    // MACROS & KEY BINDINGS (TAB-MACROS)
+    const newMacroBtn = document.getElementById('newMacroBtn');
+    if (newMacroBtn) {
+      newMacroBtn.addEventListener('click', () => {
+        triggerHaptic(12);
+        openMacroComposer(null);
+      });
+    }
+
+    const macrosListContainer = document.getElementById('macrosListContainer');
+    if (macrosListContainer) {
+      macrosListContainer.addEventListener('click', async (e) => {
+        const editBtn = e.target.closest('[data-edit-macro]');
+        if (editBtn) {
+          e.stopPropagation();
+          triggerHaptic(10);
+          const id = editBtn.getAttribute('data-edit-macro');
+          const found = (state.macros || []).find((m) => m.id === id);
+          if (found) openMacroComposer(found);
+          return;
+        }
+
+        const runBtn = e.target.closest('[data-run-macro]');
+        if (runBtn) {
+          triggerHaptic(16);
+          const id = runBtn.getAttribute('data-run-macro');
+          const found = (state.macros || []).find((m) => m.id === id);
+          try {
+            await sendCommand('run_macro', { id }, 12000);
+            logAuditEvent('app', `Makro çalıştırıldı: ${(found && found.name) || 'Makro'}`);
+            showToast(`${(found && found.name) || 'Makro'} çalıştırıldı`);
+          } catch (err) {
+            showToast(err.message);
+          }
+        }
+      });
+    }
+
+    const closeMacroModalBtn = document.getElementById('closeMacroModalBtn');
+    if (closeMacroModalBtn) {
+      closeMacroModalBtn.addEventListener('click', () => closeModal('macroComposerModal'));
+    }
+    const cancelMacroModalBtn = document.getElementById('cancelMacroModalBtn');
+    if (cancelMacroModalBtn) {
+      cancelMacroModalBtn.addEventListener('click', () => closeModal('macroComposerModal'));
+    }
+
+    const macroModPills = document.getElementById('macroModPills');
+    if (macroModPills) {
+      macroModPills.addEventListener('click', (e) => {
+        const pill = e.target.closest('[data-macro-mod]');
+        if (!pill) return;
+        triggerHaptic(8);
+        pill.classList.toggle('active');
+        state.macroActiveMods = Array.from(macroModPills.querySelectorAll('.macro-mod-pill.active')).map((b) =>
+          b.getAttribute('data-macro-mod')
+        );
+      });
+    }
+
+    const addMacroKeyStepBtn = document.getElementById('addMacroKeyStepBtn');
+    if (addMacroKeyStepBtn) {
+      addMacroKeyStepBtn.addEventListener('click', () => {
         triggerHaptic(10);
-        renderScenesList();
-        openModal('scenesManagerModal');
+        const keyInput = document.getElementById('macroCustomKeyInput');
+        const rawKey = keyInput ? keyInput.value.trim().toUpperCase() : '';
+        const mods = Array.isArray(state.macroActiveMods) ? state.macroActiveMods : [];
+        if (!rawKey && !mods.length) {
+          showToast('Lütfen bir tuş yazın veya üstten kısayol seçin');
+          return;
+        }
+        const parts = [...mods];
+        if (rawKey && !parts.includes(rawKey)) parts.push(rawKey);
+        const combo = parts.join('+');
+        state.macroSteps.push({ type: 'key', value: combo });
+        if (keyInput) keyInput.value = '';
+        state.macroActiveMods = [];
+        document.querySelectorAll('#macroModPills .macro-mod-pill').forEach((b) => b.classList.remove('active'));
+        const nameIn = document.getElementById('macroNameInput');
+        if (nameIn && !nameIn.value.trim()) nameIn.value = combo;
+        renderMacroComposerSteps();
       });
     }
 
-    const closeScenesManagerModalBtn = document.getElementById('closeScenesManagerModalBtn');
-    if (closeScenesManagerModalBtn) {
-      closeScenesManagerModalBtn.addEventListener('click', () => {
-        closeModal('scenesManagerModal');
+    const macroPresetChips = document.getElementById('macroPresetChips');
+    if (macroPresetChips) {
+      macroPresetChips.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-macro-preset]');
+        if (!chip) return;
+        triggerHaptic(10);
+        const presetVal = chip.getAttribute('data-macro-preset');
+        if (!presetVal) return;
+        const mods = Array.isArray(state.macroActiveMods) ? state.macroActiveMods : [];
+        let combo = presetVal;
+        if (mods.length && !presetVal.includes('+')) {
+          combo = [...mods, presetVal].join('+');
+          state.macroActiveMods = [];
+          document.querySelectorAll('#macroModPills .macro-mod-pill').forEach((b) => b.classList.remove('active'));
+        }
+        state.macroSteps.push({ type: 'key', value: combo });
+        const nameIn = document.getElementById('macroNameInput');
+        if (nameIn && !nameIn.value.trim()) nameIn.value = chip.textContent.trim();
+        renderMacroComposerSteps();
       });
     }
 
-    // REMOTE STREAM TOGGLE & HARDWARE MOUSE BUTTONS
+    const addMacroTextStepBtn = document.getElementById('addMacroTextStepBtn');
+    if (addMacroTextStepBtn) {
+      addMacroTextStepBtn.addEventListener('click', () => {
+        triggerHaptic(10);
+        const txtIn = document.getElementById('macroTextStepInput');
+        const val = txtIn ? txtIn.value : '';
+        if (!val) {
+          showToast('Lütfen yazdırılacak metni girin');
+          return;
+        }
+        state.macroSteps.push({ type: 'text', value: val });
+        if (txtIn) txtIn.value = '';
+        renderMacroComposerSteps();
+      });
+    }
+
+    const addMacroDelayStepBtn = document.getElementById('addMacroDelayStepBtn');
+    if (addMacroDelayStepBtn) {
+      addMacroDelayStepBtn.addEventListener('click', () => {
+        triggerHaptic(10);
+        const sel = document.getElementById('macroDelaySelect');
+        const ms = Number((sel && sel.value) || 250);
+        state.macroSteps.push({ type: 'delay', delayMs: ms, value: `${ms}ms` });
+        renderMacroComposerSteps();
+      });
+    }
+
+    const macroStepsEditorList = document.getElementById('macroStepsEditorList');
+    if (macroStepsEditorList) {
+      macroStepsEditorList.addEventListener('click', (e) => {
+        const remBtn = e.target.closest('[data-remove-macro-step]');
+        if (!remBtn) return;
+        triggerHaptic(10);
+        const idx = Number(remBtn.getAttribute('data-remove-macro-step'));
+        state.macroSteps.splice(idx, 1);
+        renderMacroComposerSteps();
+      });
+    }
+
+    const saveMacroConfirmBtn = document.getElementById('saveMacroConfirmBtn');
+    if (saveMacroConfirmBtn) {
+      saveMacroConfirmBtn.addEventListener('click', async () => {
+        triggerHaptic(14);
+        const keyInput = document.getElementById('macroCustomKeyInput');
+        if (!state.macroSteps.length && keyInput && keyInput.value.trim()) {
+          const rawKey = keyInput.value.trim().toUpperCase();
+          const mods = Array.isArray(state.macroActiveMods) ? state.macroActiveMods : [];
+          state.macroSteps.push({ type: 'key', value: [...mods, rawKey].join('+') });
+          keyInput.value = '';
+        }
+        const nameIn = document.getElementById('macroNameInput');
+        let name = nameIn ? nameIn.value.trim() : '';
+        if (!name && state.macroSteps.length > 0) {
+          name = String(state.macroSteps[0].value || 'Makro');
+          if (nameIn) nameIn.value = name;
+        }
+        if (!name) {
+          showToast('Lütfen makroya bir ad verin');
+          return;
+        }
+        if (!state.macroSteps.length) {
+          showToast('Lütfen en az 1 tuş veya metin adımı ekleyin');
+          return;
+        }
+        try {
+          const res = await sendCommand('save_macro', {
+            macro: {
+              id: state.editingMacroId || undefined,
+              name,
+              steps: state.macroSteps
+            }
+          });
+          if (res && Array.isArray(res.macros)) {
+            state.macros = res.macros;
+          }
+          renderMacrosList();
+          saveWorkspaceCache();
+          closeModal('macroComposerModal');
+          showToast('Makro kaydedildi');
+        } catch (err) {
+          showToast(err.message);
+        }
+      });
+    }
+
+    const deleteMacroModalBtn = document.getElementById('deleteMacroModalBtn');
+    if (deleteMacroModalBtn) {
+      deleteMacroModalBtn.addEventListener('click', async () => {
+        if (!state.editingMacroId) return;
+        triggerHaptic(16);
+        try {
+          const res = await sendCommand('delete_macro', { id: state.editingMacroId });
+          if (res && Array.isArray(res.macros)) {
+            state.macros = res.macros;
+          }
+          renderMacrosList();
+          saveWorkspaceCache();
+          closeModal('macroComposerModal');
+          showToast('Makro silindi');
+        } catch (err) {
+          showToast(err.message);
+        }
+      });
+    }
+
+    // REMOTE STREAM TOGGLE & LAPTOP TOUCHPAD BUTTONS
     const toggleStreamHeaderBtn = document.getElementById('toggleStreamHeaderBtn');
     if (toggleStreamHeaderBtn) {
       toggleStreamHeaderBtn.addEventListener('click', () => {
@@ -8899,11 +9321,12 @@
       });
     }
 
-    const trackpadMouseButtonsRow = document.getElementById('trackpadMouseButtonsRow');
-    if (trackpadMouseButtonsRow) {
-      trackpadMouseButtonsRow.addEventListener('click', (e) => {
+    const laptopTouchpadButtons = document.getElementById('laptopTouchpadButtons');
+    if (laptopTouchpadButtons) {
+      laptopTouchpadButtons.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-mouse-btn]');
         if (!btn) return;
+        e.stopPropagation();
         const mouseBtn = btn.getAttribute('data-mouse-btn') || 'left';
         triggerHaptic(12);
         sendFastInput({ type: 'mouse_click', button: mouseBtn });
