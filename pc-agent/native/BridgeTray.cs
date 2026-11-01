@@ -59,6 +59,34 @@ namespace TahaBLTTray
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern bool PostMessage(IntPtr hwnd, int msg, IntPtr wparam, IntPtr lparam);
 
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern uint RegisterWindowMessage(string lpString);
+
+        private sealed class TaskbarCreatedWatcher : NativeWindow
+        {
+            private readonly Action onTaskbarCreated;
+            private readonly uint wmTaskbarCreated;
+
+            public TaskbarCreatedWatcher(Action callback)
+            {
+                onTaskbarCreated = callback;
+                wmTaskbarCreated = RegisterWindowMessage("TaskbarCreated");
+                CreateHandle(new CreateParams());
+            }
+
+            protected override void WndProc(ref Message m)
+            {
+                if (wmTaskbarCreated != 0 && (uint)m.Msg == wmTaskbarCreated)
+                {
+                    try { if (onTaskbarCreated != null) onTaskbarCreated(); } catch { }
+                }
+                base.WndProc(ref m);
+            }
+        }
+
+        private TaskbarCreatedWatcher taskbarWatcher;
+        private int promoteTickCount = 0;
+
         public TrayApp()
         {
             baseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -79,13 +107,6 @@ namespace TahaBLTTray
 
             BuildWindows11NativeMenu();
 
-            // Advance WinForms NotifyIcon internal uID so Windows 11 WpnUserService generates a fresh
-            // NotifyIconGeneratedAumid_* and caches the new 10B icon instead of any old cached icon.
-            for (int i = 0; i < 6; i++)
-            {
-                try { new NotifyIcon().Dispose(); } catch { }
-            }
-
             trayIcon = new NotifyIcon
             {
                 Icon = CreateMinimalMonochromeTrayIcon(),
@@ -93,6 +114,20 @@ namespace TahaBLTTray
                 ContextMenu = nativeMenu,
                 Visible = true
             };
+
+            EnsureTrayIconPromoted();
+
+            taskbarWatcher = new TaskbarCreatedWatcher(() =>
+            {
+                try
+                {
+                    trayIcon.Visible = false;
+                    trayIcon.Icon = CreateMinimalMonochromeTrayIcon();
+                    trayIcon.Visible = true;
+                    EnsureTrayIconPromoted();
+                }
+                catch { }
+            });
 
             trayIcon.DoubleClick += (s, e) => CopyPairingSummary();
             trayIcon.MouseClick += (s, e) =>
@@ -113,10 +148,51 @@ namespace TahaBLTTray
             };
 
             refreshTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-            refreshTimer.Tick += (s, e) => RefreshStatus(false);
+            refreshTimer.Tick += (s, e) =>
+            {
+                if (promoteTickCount < 5)
+                {
+                    promoteTickCount++;
+                    EnsureTrayIconPromoted();
+                }
+                RefreshStatus(false);
+            };
             refreshTimer.Start();
 
             RefreshStatus(true);
+        }
+
+        private static void EnsureTrayIconPromoted()
+        {
+            try
+            {
+                using (RegistryKey settingsKey = Registry.CurrentUser.OpenSubKey(@"Control Panel\NotifyIconSettings", true))
+                {
+                    if (settingsKey == null) return;
+                    foreach (string subName in settingsKey.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using (RegistryKey sub = settingsKey.OpenSubKey(subName, true))
+                            {
+                                if (sub == null) continue;
+                                string exePath = Convert.ToString(sub.GetValue("ExecutablePath") ?? "");
+                                if (exePath.EndsWith(@"\Bridge.exe", StringComparison.OrdinalIgnoreCase) ||
+                                    exePath.IndexOf("Bridge.exe", StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    object cur = sub.GetValue("IsPromoted");
+                                    if (cur == null || Convert.ToInt32(cur) != 1)
+                                    {
+                                        sub.SetValue("IsPromoted", 1, RegistryValueKind.DWord);
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
         }
 
         // Tray icon: the transparent Bridge logo from app.ico at the tray's size (falls back to the exe's own icon,
@@ -780,10 +856,21 @@ namespace TahaBLTTray
         private Thread workerThread;
         private volatile bool stopping = false;
         private int activeChildPid = 0;
+        private int activeUserTrayPid = 0;
         private uint activeSessionId = 0xFFFFFFFF;
+        private long lastTrayCheckTick = 0;
 
         [DllImport("kernel32.dll")]
-        private static extern uint WTSGetActiveConsoleSessionId();
+        public static extern uint WTSGetActiveConsoleSessionId();
+
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        private static extern bool WTSQueryUserToken(uint SessionId, out IntPtr phToken);
+
+        [DllImport("userenv.dll", SetLastError = true)]
+        private static extern bool CreateEnvironmentBlock(out IntPtr lpEnvironment, IntPtr hToken, bool bInherit);
+
+        [DllImport("userenv.dll", SetLastError = true)]
+        private static extern bool DestroyEnvironmentBlock(IntPtr lpEnvironment);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr GetCurrentProcess();
@@ -958,6 +1045,13 @@ namespace TahaBLTTray
                                 activeSessionId = consoleSession;
                             }
                         }
+
+                        long nowTick = Environment.TickCount;
+                        if (Math.Abs(nowTick - lastTrayCheckTick) >= 5000)
+                        {
+                            lastTrayCheckTick = nowTick;
+                            EnsureUserTrayInConsoleSession(consoleSession);
+                        }
                     }
                 }
                 catch { }
@@ -967,6 +1061,88 @@ namespace TahaBLTTray
                     Thread.Sleep(100);
                 }
             }
+        }
+
+        private void EnsureUserTrayInConsoleSession(uint sessionId)
+        {
+            try
+            {
+                if (activeUserTrayPid > 0)
+                {
+                    try
+                    {
+                        Process p = Process.GetProcessById(activeUserTrayPid);
+                        if (p != null && !p.HasExited && (uint)p.SessionId == sessionId) return;
+                    }
+                    catch { activeUserTrayPid = 0; }
+                }
+
+                // Only spawn the user tray icon if explorer.exe is running in the interactive user session
+                bool explorerRunning = false;
+                foreach (var exp in Process.GetProcessesByName("explorer"))
+                {
+                    if ((uint)exp.SessionId == sessionId) { explorerRunning = true; break; }
+                }
+                if (!explorerRunning) return;
+
+                string ownExe = Application.ExecutablePath;
+                string ownName = Path.GetFileNameWithoutExtension(ownExe);
+                foreach (var p in Process.GetProcessesByName(ownName))
+                {
+                    if (p.Id != Process.GetCurrentProcess().Id && (uint)p.SessionId == sessionId)
+                    {
+                        activeUserTrayPid = p.Id;
+                        return;
+                    }
+                }
+
+                int pid = SpawnUserTrayInConsoleSession(sessionId, ownExe);
+                if (pid > 0) activeUserTrayPid = pid;
+            }
+            catch { }
+        }
+
+        public static int SpawnUserTrayInConsoleSession(uint sessionId, string trayExePath)
+        {
+            if (sessionId == 0xFFFFFFFF || sessionId == 0 || string.IsNullOrEmpty(trayExePath) || !File.Exists(trayExePath))
+                return 0;
+
+            IntPtr userToken = IntPtr.Zero;
+            IntPtr primaryToken = IntPtr.Zero;
+            IntPtr envBlock = IntPtr.Zero;
+            try
+            {
+                if (!WTSQueryUserToken(sessionId, out userToken) || userToken == IntPtr.Zero)
+                    return 0;
+                if (!DuplicateTokenEx(userToken, 0xF01FF, IntPtr.Zero, 2, 1, out primaryToken) || primaryToken == IntPtr.Zero)
+                    return 0;
+                CreateEnvironmentBlock(out envBlock, primaryToken, false);
+
+                STARTUPINFO si = new STARTUPINFO();
+                si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
+                si.lpDesktop = @"winsta0\default";
+
+                StringBuilder cmdLine = new StringBuilder();
+                cmdLine.Append("\"").Append(trayExePath).Append("\"");
+
+                uint creationFlags = 0x00000400; // CREATE_UNICODE_ENVIRONMENT
+                PROCESS_INFORMATION pi;
+                if (CreateProcessAsUserW(primaryToken, null, cmdLine, IntPtr.Zero, IntPtr.Zero, false, creationFlags, envBlock, Path.GetDirectoryName(trayExePath), ref si, out pi))
+                {
+                    int pid = pi.dwProcessId;
+                    if (pi.hThread != IntPtr.Zero) CloseHandle(pi.hThread);
+                    if (pi.hProcess != IntPtr.Zero) CloseHandle(pi.hProcess);
+                    return pid;
+                }
+            }
+            catch { }
+            finally
+            {
+                if (envBlock != IntPtr.Zero) try { DestroyEnvironmentBlock(envBlock); } catch { }
+                if (primaryToken != IntPtr.Zero) try { CloseHandle(primaryToken); } catch { }
+                if (userToken != IntPtr.Zero) try { CloseHandle(userToken); } catch { }
+            }
+            return 0;
         }
 
         private int SpawnSystemAgentInConsoleSession(uint sessionId, string nodeExe, string serverScript, string workingDir)
@@ -1340,6 +1516,21 @@ namespace TahaBLTTray
             }
 
             try { SetProcessDPIAware(); } catch { }
+
+            // If launched under SYSTEM without --service (e.g. by self-updater), re-spawn under the interactive logged-in user token so Windows 11 displays the NotifyIcon in the user's taskbar
+            try
+            {
+                if (System.Security.Principal.WindowsIdentity.GetCurrent().IsSystem)
+                {
+                    uint consoleSession = BridgeBootService.WTSGetActiveConsoleSessionId();
+                    if (consoleSession != 0 && consoleSession != 0xFFFFFFFF)
+                    {
+                        BridgeBootService.SpawnUserTrayInConsoleSession(consoleSession, Application.ExecutablePath);
+                    }
+                    return;
+                }
+            }
+            catch { }
 
             // Ensure the pre-login Windows Service (BridgeService) and NIC Wake-on-LAN are configured
             if (!IsSystemServiceInstalledAndRunning() || !IsNicWakeOnLanConfigured())

@@ -5936,6 +5936,115 @@ namespace TahaBLT
         private static string fallbackMediaTrackKey = "";
         private static double fallbackMediaPosSec = 0.0;
         private static DateTimeOffset fallbackMediaLastUtc = DateTimeOffset.MinValue;
+        private static readonly Dictionary<string, string> lastGsmtcTitleByAppId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, string> lastGsmtcArtistByAppId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private static List<GsmtcMediaSnapshot> lastValidGsmtcSnapshots = null;
+        private static DateTimeOffset lastValidGsmtcUtc = DateTimeOffset.MinValue;
+        private static long lastUserTrayCheckTick = 0;
+
+        private static bool IsJunkOrNonMediaTitle(string title)
+        {
+            if (string.IsNullOrWhiteSpace(title)) return true;
+            string t = title.Trim();
+            if (t.Equals("Medya Oynatılmıyor", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Medya Bekleniyor", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Masaüstü Ses Sistemi", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Yeni Sekme", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("New Tab", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("about:blank", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Google Chrome", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Microsoft Edge", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Brave", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Mozilla Firefox", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Firefox", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Opera", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Helium", StringComparison.OrdinalIgnoreCase) ||
+                t.Equals("Zen Browser", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            // Exclude image viewer tabs (e.g., "bridge-logo.png (1024×1024)") and static document/archive filenames
+            if (System.Text.RegularExpressions.Regex.IsMatch(t, @"\(\d+\s*[x×]\s*\d+\)", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                return true;
+            if (System.Text.RegularExpressions.Regex.IsMatch(t, @"\.(png|jpe?g|gif|webp|svg|ico|bmp|pdf|txt|zip|rar|7z|exe|msi)(\b|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                return true;
+            return false;
+        }
+
+        private static void EnsureInteractiveUserTrayRunning()
+        {
+            long nowTick = Environment.TickCount;
+            if (Math.Abs(nowTick - lastUserTrayCheckTick) < 8000) return;
+            lastUserTrayCheckTick = nowTick;
+            try
+            {
+                uint activeSession = WTSGetActiveConsoleSessionId();
+                if (activeSession == 0 || activeSession == 0xFFFFFFFF) return;
+
+                bool explorerRunning = false;
+                foreach (var exp in Process.GetProcessesByName("explorer"))
+                {
+                    if ((uint)exp.SessionId == activeSession) { explorerRunning = true; break; }
+                }
+                if (!explorerRunning) return;
+
+                foreach (var p in Process.GetProcessesByName("Bridge"))
+                {
+                    if ((uint)p.SessionId == activeSession) return;
+                }
+
+                string selfDir = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName) ?? "";
+                string candidate1 = Path.GetFullPath(Path.Combine(selfDir, "..", "..", "Bridge.exe"));
+                string candidate2 = Path.GetFullPath(Path.Combine(selfDir, "..", "Bridge.exe"));
+                string candidate3 = Path.Combine(selfDir, "Bridge.exe");
+                string trayExe = File.Exists(candidate1) ? candidate1 : File.Exists(candidate2) ? candidate2 : File.Exists(candidate3) ? candidate3 : null;
+                if (string.IsNullOrEmpty(trayExe)) return;
+
+                if (IsRunningAsSystemAccount())
+                {
+                    IntPtr userToken = IntPtr.Zero;
+                    IntPtr primaryToken = IntPtr.Zero;
+                    IntPtr envBlock = IntPtr.Zero;
+                    try
+                    {
+                        if (!WTSQueryUserToken(activeSession, out userToken) || userToken == IntPtr.Zero) return;
+                        if (!DuplicateTokenEx(userToken, 0xF01FF, IntPtr.Zero, 2, 1, out primaryToken) || primaryToken == IntPtr.Zero) return;
+                        CreateEnvironmentBlock(out envBlock, primaryToken, false);
+
+                        STARTUPINFO si = new STARTUPINFO();
+                        si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
+                        si.lpDesktop = "winsta0\\default";
+
+                        StringBuilder cmdLine = new StringBuilder();
+                        cmdLine.Append("\"").Append(trayExe).Append("\"");
+
+                        PROCESS_INFORMATION pi;
+                        uint flags = 0x00000400u; // CREATE_UNICODE_ENVIRONMENT
+                        if (CreateProcessAsUserW(primaryToken, null, cmdLine, IntPtr.Zero, IntPtr.Zero, false, flags, envBlock, Path.GetDirectoryName(trayExe), ref si, out pi))
+                        {
+                            if (pi.hThread != IntPtr.Zero) CloseHandle(pi.hThread);
+                            if (pi.hProcess != IntPtr.Zero) CloseHandle(pi.hProcess);
+                        }
+                    }
+                    finally
+                    {
+                        if (envBlock != IntPtr.Zero) try { DestroyEnvironmentBlock(envBlock); } catch { }
+                        if (primaryToken != IntPtr.Zero) try { CloseHandle(primaryToken); } catch { }
+                        if (userToken != IntPtr.Zero) try { CloseHandle(userToken); } catch { }
+                    }
+                }
+                else
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = trayExe,
+                        WorkingDirectory = Path.GetDirectoryName(trayExe),
+                        UseShellExecute = true
+                    });
+                }
+            }
+            catch { }
+        }
 
         private static bool EnsureUserMediaWorkerConnected()
         {
@@ -5955,8 +6064,8 @@ namespace TahaBLT
                 {
                     var c = userMediaListener.AcceptTcpClient();
                     c.NoDelay = true;
-                    c.ReceiveTimeout = 900;
-                    c.SendTimeout = 900;
+                    c.ReceiveTimeout = 2000;
+                    c.SendTimeout = 2000;
                     var ns = c.GetStream();
                     var sr = new StreamReader(ns, new UTF8Encoding(false));
                     var sw = new StreamWriter(ns, new UTF8Encoding(false)) { AutoFlush = true };
@@ -5995,8 +6104,8 @@ namespace TahaBLT
                         {
                             var c = userMediaListener.AcceptTcpClient();
                             c.NoDelay = true;
-                            c.ReceiveTimeout = 900;
-                            c.SendTimeout = 900;
+                            c.ReceiveTimeout = 2000;
+                            c.SendTimeout = 2000;
                             var ns = c.GetStream();
                             var sr = new StreamReader(ns, new UTF8Encoding(false));
                             var sw = new StreamWriter(ns, new UTF8Encoding(false)) { AutoFlush = true };
@@ -6213,8 +6322,17 @@ namespace TahaBLT
             if (list == null || list.Count == 0) return null;
             lock (mediaSelectLock)
             {
+                var validList = new List<GsmtcMediaSnapshot>();
+                foreach (var item in list)
+                {
+                    if (item == null) continue;
+                    if (IsJunkOrNonMediaTitle(item.Title) && string.IsNullOrWhiteSpace(item.Artist)) continue;
+                    validList.Add(item);
+                }
+                if (validList.Count == 0) return null;
+
                 GsmtcMediaSnapshot sticky = null, stickyApp = null, current = null, firstPlaying = null, audibleMatch = null;
-                foreach (var s in list)
+                foreach (var s in validList)
                 {
                     if (sticky == null && s.AppId == stickyMediaAppId && s.Title == stickyMediaTitle) sticky = s;
                     if (stickyApp == null && s.AppId == stickyMediaAppId) stickyApp = s;
@@ -6232,11 +6350,12 @@ namespace TahaBLT
                 }
                 GsmtcMediaSnapshot pick;
                 var stickyAny = sticky ?? stickyApp;
-                if (audibleMatch != null && audibleMatch.IsPlaying) pick = audibleMatch;
-                else if (stickyAny != null && stickyAny.IsPlaying) pick = stickyAny;
-                else if (firstPlaying != null) pick = (current != null && current.IsPlaying) ? current : firstPlaying; // something else started playing
-                else if (audibleMatch != null) pick = audibleMatch;
-                else pick = stickyAny ?? current ?? list[0];
+                // Keep the sticky session when playing, and only switch away when another GSMTC session is actively playing
+                if (stickyAny != null && stickyAny.IsPlaying) pick = stickyAny;
+                else if (audibleMatch != null && audibleMatch.IsPlaying) pick = audibleMatch;
+                else if (firstPlaying != null) pick = (current != null && current.IsPlaying) ? current : firstPlaying;
+                else if (stickyAny != null) pick = stickyAny;
+                else pick = current ?? validList[0];
                 stickyMediaAppId = pick.AppId;
                 stickyMediaTitle = pick.Title;
                 return pick;
@@ -6322,10 +6441,44 @@ namespace TahaBLT
             if (!isUserMediaWorkerProcess && IsRunningAsSystemAccount())
             {
                 var workerSnaps = QueryUserMediaWorker(seekPositionSec, targetProcHint, null);
-                if (workerSnaps != null)
+                if (workerSnaps != null && workerSnaps.Count > 0)
                 {
+                    lock (mediaSelectLock)
+                    {
+                        lastValidGsmtcSnapshots = workerSnaps;
+                        lastValidGsmtcUtc = DateTimeOffset.UtcNow;
+                    }
                     return workerSnaps;
                 }
+                lock (mediaSelectLock)
+                {
+                    if (lastValidGsmtcSnapshots != null && lastValidGsmtcSnapshots.Count > 0)
+                    {
+                        double ageSec = (DateTimeOffset.UtcNow - lastValidGsmtcUtc).TotalSeconds;
+                        if (ageSec >= 0 && ageSec <= 5.5)
+                        {
+                            var cached = new List<GsmtcMediaSnapshot>();
+                            foreach (var prev in lastValidGsmtcSnapshots)
+                            {
+                                double nextPos = prev.PositionSec + (prev.IsPlaying ? ageSec : 0.0);
+                                if (prev.DurationSec > 0 && nextPos > prev.DurationSec) nextPos = prev.DurationSec;
+                                cached.Add(new GsmtcMediaSnapshot
+                                {
+                                    AppId = prev.AppId,
+                                    Title = prev.Title,
+                                    Artist = prev.Artist,
+                                    IsPlaying = prev.IsPlaying,
+                                    PositionSec = Math.Round(nextPos, 1),
+                                    DurationSec = prev.DurationSec,
+                                    SessionObj = prev.SessionObj,
+                                    IsCurrent = prev.IsCurrent
+                                });
+                            }
+                            return cached;
+                        }
+                    }
+                }
+                if (workerSnaps != null) return workerSnaps;
             }
             var result = new List<GsmtcMediaSnapshot>();
             try
@@ -6418,7 +6571,7 @@ namespace TahaBLT
                             try
                             {
                                 object propsOp = getPropsMethod.Invoke(s, null);
-                                object props = AwaitWinRtOperation(propsOp, propsType, 350);
+                                object props = AwaitWinRtOperation(propsOp, propsType, 650);
                                 if (props != null)
                                 {
                                     if (titleProp != null) title = Convert.ToString(titleProp.GetValue(props, null) ?? "").Trim();
@@ -6426,6 +6579,30 @@ namespace TahaBLT
                                 }
                             }
                             catch { }
+                        }
+
+                        lock (mediaSelectLock)
+                        {
+                            if (!string.IsNullOrWhiteSpace(title) && !IsJunkOrNonMediaTitle(title))
+                            {
+                                if (!string.IsNullOrEmpty(appId))
+                                {
+                                    lastGsmtcTitleByAppId[appId] = title;
+                                    lastGsmtcArtistByAppId[appId] = artist ?? "";
+                                }
+                            }
+                            else if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrEmpty(appId) && lastGsmtcTitleByAppId.ContainsKey(appId))
+                            {
+                                // Prevent 1-tick WinRT TryGetMediaPropertiesAsync timeout from blanking the track title
+                                title = lastGsmtcTitleByAppId[appId];
+                                if (string.IsNullOrWhiteSpace(artist) && lastGsmtcArtistByAppId.ContainsKey(appId))
+                                    artist = lastGsmtcArtistByAppId[appId];
+                            }
+                        }
+
+                        if (IsJunkOrNonMediaTitle(title) && string.IsNullOrWhiteSpace(artist))
+                        {
+                            continue;
                         }
 
                         result.Add(new GsmtcMediaSnapshot
@@ -6441,6 +6618,15 @@ namespace TahaBLT
                         });
                     }
                     catch { }
+                }
+
+                if (result.Count > 0)
+                {
+                    lock (mediaSelectLock)
+                    {
+                        lastValidGsmtcSnapshots = result;
+                        lastValidGsmtcUtc = DateTimeOffset.UtcNow;
+                    }
                 }
 
                 if (seekPositionSec.HasValue && seekMethod != null && result.Count > 0)
@@ -6939,28 +7125,26 @@ namespace TahaBLT
                         }
                     }
 
-                    bool isKnownMediaApp =
+                    // Only dedicated standalone desktop media players may use window-title fallback when GSMTC is absent.
+                    // Web browsers (Chrome, Edge, Brave, Firefox, Helium, Opera, Zen, Vivaldi) ALWAYS expose real media
+                    // playback via Windows GSMTC; their MainWindowTitle is merely the focused browser tab (e.g. an image
+                    // file like "bridge-logo.png (1024×1024)" or a webpage) and must NEVER be treated as a media track.
+                    bool isStandaloneMediaPlayerApp =
                         procName.Equals("Spotify", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("chrome", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("helium", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("msedge", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("brave", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("firefox", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("opera", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("zen", StringComparison.OrdinalIgnoreCase) ||
                         procName.Equals("vlc", StringComparison.OrdinalIgnoreCase) ||
                         procName.Equals("mpc-hc64", StringComparison.OrdinalIgnoreCase) ||
+                        procName.Equals("mpc-be64", StringComparison.OrdinalIgnoreCase) ||
                         procName.Equals("Music.UI", StringComparison.OrdinalIgnoreCase) ||
                         procName.Equals("foobar2000", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("AIMP", StringComparison.OrdinalIgnoreCase);
-
-                    bool isExcludedFromNowPlaying =
-                        procName.Equals("Discord", StringComparison.OrdinalIgnoreCase) ||
-                        procName.IndexOf("SteelSeries", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        procName.IndexOf("Sonar", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        procName.Equals("steamwebhelper", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("steam", StringComparison.OrdinalIgnoreCase) ||
-                        procName.Equals("explorer", StringComparison.OrdinalIgnoreCase);
+                        procName.Equals("AIMP", StringComparison.OrdinalIgnoreCase) ||
+                        procName.Equals("wmplayer", StringComparison.OrdinalIgnoreCase) ||
+                        procName.Equals("PotPlayerMini64", StringComparison.OrdinalIgnoreCase) ||
+                        procName.Equals("PotPlayer", StringComparison.OrdinalIgnoreCase) ||
+                        procName.Equals("mpv", StringComparison.OrdinalIgnoreCase) ||
+                        procName.Equals("iTunes", StringComparison.OrdinalIgnoreCase) ||
+                        procName.Equals("AppleMusic", StringComparison.OrdinalIgnoreCase) ||
+                        procName.Equals("TIDAL", StringComparison.OrdinalIgnoreCase) ||
+                        procName.Equals("Winamp", StringComparison.OrdinalIgnoreCase);
 
                     string friendlyApp = displayProcName;
                     if (procName.Equals("chrome", StringComparison.OrdinalIgnoreCase)) friendlyApp = "Google Chrome";
@@ -6970,7 +7154,7 @@ namespace TahaBLT
                     else if (procName.Equals("zen", StringComparison.OrdinalIgnoreCase)) friendlyApp = "Zen Browser";
                     else if (procName.Equals("vlc", StringComparison.OrdinalIgnoreCase)) friendlyApp = "VLC Media Player";
 
-                    if (!isExcludedFromNowPlaying)
+                    if (isStandaloneMediaPlayerApp && !IsJunkOrNonMediaTitle(cleanTitle))
                     {
                         var candidateObj = new Dictionary<string, object>
                         {
@@ -6985,10 +7169,7 @@ namespace TahaBLT
 
                         if (isEffectivePlaying)
                         {
-                            int score = 100;
-                            if (procName.Equals("Spotify", StringComparison.OrdinalIgnoreCase) ||
-                                procName.Equals("vlc", StringComparison.OrdinalIgnoreCase)) score += 45;
-                            else if (isKnownMediaApp) score += 30;
+                            int score = 145;
                             if (!string.IsNullOrWhiteSpace(winTitle)) score += 15;
 
                             if (score > bestAudibleScore)
@@ -6997,7 +7178,7 @@ namespace TahaBLT
                                 bestAudibleCandidate = candidateObj;
                             }
                         }
-                        else if (isKnownMediaApp && !string.IsNullOrWhiteSpace(winTitle))
+                        else if (!string.IsNullOrWhiteSpace(winTitle))
                         {
                             int pScore = (sessionState == 1 ? 30 : 10) + (procName.Equals("Spotify", StringComparison.OrdinalIgnoreCase) ? 20 : 10);
                             if (lastKnownMediaCandidate != null &&
@@ -7029,6 +7210,8 @@ namespace TahaBLT
                     }
                 }
 
+                EnsureInteractiveUserTrayRunning();
+
                 Dictionary<string, object> finalMedia = null;
                 if (bestAudibleCandidate != null)
                 {
@@ -7044,7 +7227,8 @@ namespace TahaBLT
                 else if (lastKnownMediaCandidate != null)
                 {
                     string prevProc = Convert.ToString(lastKnownMediaCandidate["processName"] ?? "");
-                    if (!string.IsNullOrEmpty(prevProc) && Process.GetProcessesByName(prevProc).Length > 0)
+                    string prevTitle = Convert.ToString(lastKnownMediaCandidate["title"] ?? "");
+                    if (!string.IsNullOrEmpty(prevProc) && !IsJunkOrNonMediaTitle(prevTitle) && Process.GetProcessesByName(prevProc).Length > 0)
                     {
                         finalMedia = new Dictionary<string, object>(lastKnownMediaCandidate);
                         finalMedia["active"] = true;
@@ -7062,7 +7246,7 @@ namespace TahaBLT
                     {
                         { "active", false },
                         { "isPlaying", false },
-                        { "title", "Medya Oynatılmıyor" },
+                        { "title", "" },
                         { "appName", "Masaüstü Ses Sistemi" },
                         { "processName", "" },
                         { "pid", 0 },

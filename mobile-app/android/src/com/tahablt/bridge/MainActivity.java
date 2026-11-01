@@ -82,6 +82,7 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private android.widget.FrameLayout rootContainer;
+    private volatile boolean liveKeyboardTrapActive = false;
     private boolean isLandscapeFullscreen = false;
     private int currentNavBarColor = Color.parseColor("#121216");
     private int lastInsetTop = 0;
@@ -154,7 +155,21 @@ public class MainActivity extends Activity {
         };
         rootContainer.setBackgroundColor(Color.parseColor("#09090B"));
 
-        webView = new WebView(this);
+        webView = new WebView(this) {
+            @Override
+            public android.view.inputmethod.InputConnection onCreateInputConnection(android.view.inputmethod.EditorInfo outAttrs) {
+                android.view.inputmethod.InputConnection ic = super.onCreateInputConnection(outAttrs);
+                if (outAttrs != null && liveKeyboardTrapActive) {
+                    outAttrs.inputType = android.text.InputType.TYPE_CLASS_TEXT
+                            | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                            | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+                    outAttrs.imeOptions |= android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                            | android.view.inputmethod.EditorInfo.IME_FLAG_NO_FULLSCREEN
+                            | 0x02000000; // IME_FLAG_NO_PERSONALIZED_LEARNING
+                }
+                return ic;
+            }
+        };
         webView.setBackgroundColor(Color.parseColor("#09090B"));
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         webView.setVerticalScrollBarEnabled(false);
@@ -1682,6 +1697,25 @@ public class MainActivity extends Activity {
                 results.put(item);
             }
             return results.toString();
+        }
+
+        @JavascriptInterface
+        public void setLiveKeyboardTrapActive(final boolean active) {
+            if (activity == null) return;
+            boolean changed = (activity.liveKeyboardTrapActive != active);
+            activity.liveKeyboardTrapActive = active;
+            if (changed && activity.webView != null) {
+                activity.runOnUiThread(() -> {
+                    try {
+                        android.view.inputmethod.InputMethodManager imm =
+                                (android.view.inputmethod.InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                        if (imm != null && activity.webView != null) {
+                            imm.restartInput(activity.webView);
+                        }
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
         }
 
         @JavascriptInterface

@@ -3840,9 +3840,28 @@
     return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
   }
 
+  function isJunkMediaTitle(title) {
+    if (!title) return true;
+    const t = String(title).trim();
+    if (
+      !t ||
+      t === 'Medya Oynatılmıyor' ||
+      t === 'Medya Bekleniyor' ||
+      t === 'Masaüstü Ses Sistemi' ||
+      t === 'Yeni Sekme' ||
+      t === 'New Tab' ||
+      t === 'about:blank'
+    ) {
+      return true;
+    }
+    if (/\(\d+\s*[x×]\s*\d+\)/i.test(t)) return true;
+    if (/\.(png|jpe?g|gif|webp|svg|ico|bmp|pdf|txt|zip|rar|7z|exe|msi)$/i.test(t)) return true;
+    return false;
+  }
+
   function getEffectiveNowPlaying() {
     const np = state.audio && state.audio.nowPlaying ? state.audio.nowPlaying : null;
-    if (np && (np.active || np.title)) {
+    if (np && np.active === true && !isJunkMediaTitle(np.title)) {
       const basePos = Math.max(0, Number(np.positionSec || 0));
       const dur = Math.max(0, Number(np.durationSec || 0));
       const elapsedSinceSync =
@@ -3858,19 +3877,6 @@
         title: np.title || np.appName || np.processName || 'Medya Oynatılıyor',
         positionSec: livePos,
         durationSec: dur
-      };
-    }
-    const sessions = state.audio && Array.isArray(state.audio.sessions) ? state.audio.sessions : [];
-    const playingSession = sessions.find((s) => s && s.isPlaying && !s.muted);
-    if (playingSession) {
-      return {
-        active: true,
-        isPlaying: true,
-        processName: playingSession.processName || 'PC Medya',
-        appName: playingSession.displayName || playingSession.processName || 'PC Medya',
-        title: playingSession.displayName || playingSession.processName || 'Ses Oynatılıyor',
-        positionSec: 0,
-        durationSec: 0
       };
     }
     return null;
@@ -3990,6 +3996,27 @@
 
     // Preserve known duration & continuous client elapsed time when an incoming 5s poll reports 0/0 for the same playing track
     const prevNp = state.audio && state.audio.nowPlaying ? state.audio.nowPlaying : null;
+    if (np.active && isJunkMediaTitle(np.title)) {
+      np.active = false;
+      np.isPlaying = false;
+      np.title = '';
+    }
+    if (np.active && !isJunkMediaTitle(np.title)) {
+      state.lastValidNowPlayingTs = now;
+    } else if (
+      prevNp &&
+      prevNp.active &&
+      !isJunkMediaTitle(prevNp.title) &&
+      state.lastValidNowPlayingTs &&
+      now - state.lastValidNowPlayingTs < 4000
+    ) {
+      // Prevent transient 1-tick GSMTC drops from flickering the Now Playing card in Audio Mixer
+      const effPrev = getEffectiveNowPlaying();
+      np = {
+        ...prevNp,
+        positionSec: effPrev ? effPrev.positionSec : prevNp.positionSec
+      };
+    }
     if (prevNp && np.active) {
       const prevTrackSig = `${prevNp.processName || ''}|${prevNp.title || ''}`;
       const nextTrackSig = `${np.processName || ''}|${np.title || ''}`;
@@ -6853,22 +6880,72 @@
       stripLastY = null;
     });
 
-    // Live Android Native Keyboard Input Trap
+    // Live Android Native Keyboard Input Trap (preserves page scroll position & disables IME suggestions)
     if (liveKbdTrap) {
+      let preservedScrollY = 0;
+      let userTouchScrolling = false;
+      window.addEventListener('touchstart', () => { userTouchScrolling = true; }, { passive: true });
+      window.addEventListener('touchend', () => {
+        setTimeout(() => { userTouchScrolling = false; }, 120);
+        if (document.activeElement === liveKbdTrap) {
+          preservedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        }
+      }, { passive: true });
+
+      window.addEventListener('scroll', () => {
+        if (document.activeElement === liveKbdTrap) {
+          const curY = window.scrollY || document.documentElement.scrollTop || 0;
+          if (userTouchScrolling) {
+            preservedScrollY = curY;
+          } else if (preservedScrollY > 4 && curY === 0) {
+            window.scrollTo(0, preservedScrollY);
+          }
+        }
+      }, { passive: true });
+
+      const restoreScrollPosition = (targetY) => {
+        if (targetY <= 0) return;
+        if ((window.scrollY || 0) !== targetY) window.scrollTo(0, targetY);
+        requestAnimationFrame(() => {
+          if (!userTouchScrolling && (window.scrollY || 0) !== targetY) {
+            window.scrollTo(0, targetY);
+          }
+        });
+      };
+
+      liveKbdTrap.addEventListener('focus', () => {
+        preservedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        if (window.TahaNative && typeof window.TahaNative.setLiveKeyboardTrapActive === 'function') {
+          try { window.TahaNative.setLiveKeyboardTrapActive(true); } catch {}
+        }
+        restoreScrollPosition(preservedScrollY);
+      });
+
+      liveKbdTrap.addEventListener('blur', () => {
+        if (window.TahaNative && typeof window.TahaNative.setLiveKeyboardTrapActive === 'function') {
+          try { window.TahaNative.setLiveKeyboardTrapActive(false); } catch {}
+        }
+      });
+
       liveKbdTrap.addEventListener('input', () => {
+        const keepY = preservedScrollY || window.scrollY || 0;
         const val = liveKbdTrap.value;
         if (val) {
           liveKbdTrap.value = '';
+          restoreScrollPosition(keepY);
           sendCommand('send_input', { type: 'text', text: val }, 1500).catch(() => {});
         }
       });
 
       liveKbdTrap.addEventListener('keydown', (e) => {
+        const keepY = preservedScrollY || window.scrollY || 0;
         if (e.key === 'Backspace') {
           e.preventDefault();
+          restoreScrollPosition(keepY);
           sendCommand('send_input', { type: 'key', key: 'BACKSPACE' }, 1500).catch(() => {});
         } else if (e.key === 'Enter') {
           e.preventDefault();
+          restoreScrollPosition(keepY);
           sendCommand('send_input', { type: 'key', key: 'ENTER' }, 1500).catch(() => {});
         }
       });
@@ -7318,7 +7395,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.20.1';
+    let currentAppVer = '2.20.2';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -9545,7 +9622,21 @@
       triggerHaptic(10);
       const trap = document.getElementById('liveKeyboardTrap');
       if (trap) {
-        trap.focus();
+        const savedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        if (window.TahaNative && typeof window.TahaNative.setLiveKeyboardTrapActive === 'function') {
+          try { window.TahaNative.setLiveKeyboardTrapActive(true); } catch {}
+        }
+        try {
+          trap.focus({ preventScroll: true });
+        } catch {
+          trap.focus();
+        }
+        if (savedScrollY > 0) {
+          window.scrollTo(0, savedScrollY);
+          requestAnimationFrame(() => window.scrollTo(0, savedScrollY));
+          setTimeout(() => window.scrollTo(0, savedScrollY), 60);
+          setTimeout(() => window.scrollTo(0, savedScrollY), 180);
+        }
         showToast('Canlı klavye aktif — yazdıklarınız anında PC ekranına iletilir');
       }
     };
