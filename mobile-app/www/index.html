@@ -230,7 +230,7 @@
 
                 <div class="setting-action-row">
                   <div class="setting-meta">
-                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.3</span>
+                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.4</span>
                     <span class="setting-desc" id="updateStatusCaption">GitHub (blttaha/bridge) üzerinden mobil ve masaüstü sürümlerini denetleyin</span>
                   </div>
                   <button type="button" class="btn-compact btn-secondary" id="btnCheckUpdatesSetting">Denetle</button>
@@ -444,7 +444,7 @@
 
         <!-- TAB 3: UYGULAMALAR (TÜM TESPİT EDİLEN VE ELLE EKLENEN UYGULAMALAR) -->
         <section class="tab-panel" id="tab-apps" data-layout-container="tab-apps">
-          <div class="section-header-stack" data-layout-id="apps_header" data-layout-label="Uygulamalar Başlığı">
+          <div class="section-header-stack" data-layout-id="apps_header" data-layout-group="apps_top" data-layout-label="Uygulamalar Başlığı">
             <div class="section-header-top">
               <h1 class="section-title-lg">Uygulamalar</h1>
               <div class="header-btn-group">
@@ -460,7 +460,7 @@
             </p>
           </div>
 
-          <div class="apps-toolbar-stack" data-layout-id="apps_search" data-layout-label="Uygulama Arama Çubuğu">
+          <div class="apps-toolbar-stack" data-layout-id="apps_search" data-layout-group="apps_top" data-layout-label="Uygulama Arama Çubuğu">
             <div class="apps-search-box">
               <svg class="apps-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                 <circle cx="9" cy="9" r="5.5" />
@@ -481,7 +481,7 @@
 
         <!-- TAB 4: KONTROL (EKRANSIZ MOUSE/TOUCHPAD, CANLI MASAÜSTÜ, EKRANLAR & PENCERELER) -->
         <section class="tab-panel is-remote-screen-off" id="tab-remote" data-layout-container="tab-remote">
-          <div class="remote-workstation is-screen-off" id="remoteWorkstation" data-layout-id="remote_workstation" data-layout-label="Touchpad ve Canlı Ekran">
+          <div class="remote-workstation is-screen-off" id="remoteWorkstation" data-layout-id="remote_workstation" data-layout-group="remote_console" data-layout-label="Touchpad ve Canlı Ekran">
             <!-- Top Remote Bar: Monitor Switcher + Stream Toggle + Mouse/Touch Mode + Fullscreen & Keyboard -->
             <div class="remote-header-bar">
               <div class="remote-touchpad-header-title" id="remoteTouchpadHeaderTitle">
@@ -585,7 +585,7 @@
           </div>
 
           <!-- GRANULAR ITEM: PC METİN YAZDIRMA FORMU -->
-          <div class="layout-widget-card remote-screen-only-widget" id="remoteTextFormWidget" data-layout-id="remote_text_form" data-layout-label="Bilgisayara Metin Yazdır">
+          <div class="layout-widget-card remote-screen-only-widget" id="remoteTextFormWidget" data-layout-id="remote_text_form" data-layout-group="remote_console" data-layout-label="Bilgisayara Metin Yazdır">
             <form class="remote-text-form" id="remoteTextForm">
               <input
                 type="text"
@@ -599,7 +599,7 @@
           </div>
 
           <!-- GRANULAR ITEM: KLAVYE KISAYOL TUŞ TAKIMI -->
-          <div class="layout-widget-card remote-screen-only-widget" id="remoteHotkeyDeckWidget" data-layout-id="remote_hotkey_deck" data-layout-label="Klavye Kısayol Tuşları">
+          <div class="layout-widget-card remote-screen-only-widget" id="remoteHotkeyDeckWidget" data-layout-id="remote_hotkey_deck" data-layout-group="remote_console" data-layout-label="Klavye Kısayol Tuşları">
             <div class="kbd-category-tabs">
               <button type="button" class="kbd-cat-btn active" data-kbd-cat="basic">Temel</button>
               <button type="button" class="kbd-cat-btn" data-kbd-cat="edit">Düzen</button>
@@ -655,12 +655,42 @@
             </div>
           </div>
 
+          <!-- GRANULAR ITEM: WEB ARAMA VE URL AÇICI -->
+          <div class="layout-widget-card" id="remoteUrlLauncherWidget" data-layout-id="remote_url_launcher" data-layout-label="Web / URL Aç">
+            <form class="remote-text-form remote-url-search-form" id="remoteUrlSearchForm">
+              <div class="url-search-input-wrap">
+                <svg class="url-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <circle cx="10" cy="10" r="7" />
+                  <path d="M3.2 10h13.6M10 3a11.5 11.5 0 0 1 3 7 11.5 11.5 0 0 1-3 7 11.5 11.5 0 0 1-3-7 11.5 11.5 0 0 1 3-7z" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <input
+                  type="text"
+                  class="input-field url-search-input"
+                  id="remoteUrlSearchInput"
+                  placeholder="URL aç veya varsayılan tarayıcıda ara..."
+                  autocomplete="off"
+                />
+              </div>
+              <button type="submit" class="icon-btn icon-btn-sm icon-btn-primary url-search-submit-btn" title="Varsayılan Tarayıcıda Aç / Ara" aria-label="Tarayıcıda Aç">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M5 10h10M11 6l4 4-4 4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </form>
+          </div>
+
           <!-- GRANULAR ITEM: MONİTÖR TOPOLOJİSİ KARTLARI -->
-          <div class="section-block control-monitors-section" data-layout-id="remote_monitors" data-layout-label="Monitör Topolojisi">
+          <div class="section-block control-monitors-section" data-layout-id="remote_monitors" data-layout-group="monitors" data-layout-label="Monitör Topolojisi">
             <div class="section-header-stack">
               <div class="section-header-top">
                 <h2 class="section-title">Monitör Topolojisi</h2>
                 <div class="header-btn-group">
+                  <button type="button" class="icon-btn icon-btn-sm" id="openBrightnessDrawerBtn" title="Ekran Parlaklığı" aria-label="Ekran Parlaklığı">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <circle cx="10" cy="10" r="3.4" />
+                      <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" stroke-linecap="round" />
+                    </svg>
+                  </button>
                   <button type="button" class="icon-btn icon-btn-sm" id="allMonitorsOffBtn" title="Tüm Ekranları Kapat" aria-label="Tümünü Kapat">
                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                       <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
@@ -681,7 +711,7 @@
           </div>
 
           <!-- GRANULAR ITEM: WINDOWS GÖRÜNTÜ YANSITMA MODU -->
-          <div class="sub-panel layout-standalone-subpanel" data-layout-id="remote_display_mode" data-layout-label="Görüntü Yansıtma Modu">
+          <div class="sub-panel layout-standalone-subpanel" data-layout-id="remote_display_mode" data-layout-group="monitors" data-layout-label="Görüntü Yansıtma Modu">
             <div class="sub-panel-header">
               <span class="sub-panel-title">Windows Görüntü Yansıtma Modu</span>
             </div>
@@ -698,7 +728,6 @@
             <div class="section-header-row">
               <div>
                 <h2 class="section-title">Açık Pencereler</h2>
-                <p class="section-subtitle">Tek tuşla başka monitöre gönderin, büyütün veya kapatın</p>
               </div>
               <button type="button" class="icon-btn icon-btn-sm" id="refreshWindowsBtn" title="Pencereleri Yenile" aria-label="Pencereleri Yenile">
                 <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -713,7 +742,7 @@
         <!-- TAB 5: SİSTEM, SES MİKSERİ, ZAMANLAYICI & GÜÇ -->
         <section class="tab-panel" id="tab-system" data-layout-container="tab-system">
           <!-- GRANULAR ITEM 1: ANA SİSTEM SESİ VE MİKSER -->
-          <div class="section-block" data-layout-id="sys_audio_master" data-layout-label="Ana Sistem Sesi">
+          <div class="section-block" data-layout-id="sys_audio_master" data-layout-group="audio" data-layout-label="Ana Sistem Sesi">
             <div class="section-header-row">
               <div>
                 <h1 class="section-title-lg">Ses ve Medya Mikseri</h1>
@@ -765,7 +794,7 @@
           </div>
 
           <!-- GRANULAR ITEM 2: ÇALAN MEDYA BİLGİSİ (SADECE ŞARKI KARTI TAŞINABİLİR) -->
-          <div class="audio-standalone-card" data-layout-id="sys_media_now_playing" data-layout-label="Çalan Medya Bilgisi">
+          <div class="audio-standalone-card" data-layout-id="sys_media_now_playing" data-layout-group="audio" data-layout-label="Çalan Medya Bilgisi">
             <div class="now-playing-banner" id="nowPlayingBanner">
               <div class="now-playing-icon-wrap" id="nowPlayingIconBox">
                 <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -780,7 +809,7 @@
           </div>
 
           <!-- GRANULAR ITEM 3: MEDYA İLERLEME ÇUBUĞU (SADECE SÜRE ÇUBUĞU TAŞINABİLİR) -->
-          <div class="audio-standalone-card" data-layout-id="sys_media_timeline" data-layout-label="Medya İlerleme Çubuğu">
+          <div class="audio-standalone-card" data-layout-id="sys_media_timeline" data-layout-group="audio" data-layout-label="Medya İlerleme Çubuğu">
             <div class="media-timeline-row" id="mediaTimelineRow">
               <span class="media-time-label" id="mediaCurrentTime">00:00</span>
               <input type="range" class="volume-slider media-seek-slider" id="mediaSeekSlider" min="0" max="100" value="0" />
@@ -789,7 +818,7 @@
           </div>
 
           <!-- GRANULAR ITEM 4: OYNAT / DURAKLAT / ÖNCEKİ / SONRAKİ TUŞLARI (TEK BAŞINA TAŞINABİLİR) -->
-          <div class="audio-standalone-card" data-layout-id="sys_media_transport" data-layout-label="Oynat / Duraklat Tuşları">
+          <div class="audio-standalone-card" data-layout-id="sys_media_transport" data-layout-group="audio" data-layout-label="Oynat / Duraklat Tuşları">
             <div class="media-transport-row">
               <button type="button" class="transport-btn" data-key="MEDIA_PREV" title="Önceki Parça" aria-label="Önceki Parça">
                 <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
@@ -807,33 +836,6 @@
                   <path d="M14.5 5v10M5.5 5L12 10l-6.5 5V5z" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
               </button>
-            </div>
-          </div>
-
-          <!-- PER-MONITOR SCREEN BRIGHTNESS -->
-          <div class="section-block" data-layout-id="sys_brightness" data-layout-label="Ekran Parlaklığı">
-            <div class="section-header-row">
-              <div>
-                <h2 class="section-title">Ekran Parlaklığı</h2>
-              </div>
-            </div>
-
-            <div class="sub-panel">
-              <div class="monitors-brightness-list" id="monitorsBrightnessList">
-                <div class="monitor-brightness-item" data-monitor-brightness-row="0">
-                  <div class="audio-row-top">
-                    <div class="audio-label-group">
-                      <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                        <circle cx="10" cy="10" r="3.5" />
-                        <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" stroke-linecap="round" />
-                      </svg>
-                      <span class="audio-label">Ekran 1</span>
-                    </div>
-                    <span class="mono-stat">100%</span>
-                  </div>
-                  <input type="range" class="volume-slider monitor-brightness-slider" data-monitor-index="0" min="10" max="100" value="100" />
-                </div>
-              </div>
             </div>
           </div>
 
@@ -874,9 +876,9 @@
                 <button type="button" class="btn-secondary btn-compact" data-timer-mins="30">30 dk</button>
                 <button type="button" class="btn-secondary btn-compact" data-timer-mins="60">60 dk</button>
                 <button type="button" class="btn-secondary btn-compact" data-timer-mins="90">90 dk</button>
-                <button type="button" class="btn-danger btn-compact timer-cancel-icon-btn" data-timer-mins="0" title="Sayacı İptal Et" aria-label="Sayacı İptal Et">
-                  <svg class="sys-pack-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7">
-                    <path d="M4.5 4.5l9 9M13.5 4.5l-9 9" stroke-linecap="round" />
+                <button type="button" class="btn-danger btn-compact timer-cancel-icon-btn" data-timer-mins="0" title="Sayacı Sil / İptal Et" aria-label="Sayacı Sil">
+                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
                 </button>
               </div>
@@ -884,7 +886,7 @@
           </div>
 
           <!-- GRANULAR WIRELESS ITEMS: WI-FI, HOTSPOT, BLUETOOTH INDEPENDENTLY MOVABLE -->
-          <div class="section-block" data-layout-id="sys_wireless_wifi" data-layout-label="Wi-Fi Ağı">
+          <div class="section-block" data-layout-id="sys_wireless_wifi" data-layout-group="wireless" data-layout-label="Wi-Fi Ağı">
             <div class="section-header-row">
               <div>
                 <h2 class="section-title">Kablosuz Bağlantılar</h2>
@@ -922,7 +924,7 @@
             </div>
           </div>
 
-          <div class="sub-panel wireless-standalone-card" data-layout-id="sys_wireless_hotspot" data-layout-label="Mobil Erişim Noktası">
+          <div class="sub-panel wireless-standalone-card" data-layout-id="sys_wireless_hotspot" data-layout-group="wireless" data-layout-label="Mobil Erişim Noktası">
             <div class="wireless-item-row">
               <div class="wireless-item-left">
                 <div class="wireless-icon-badge" id="hotspotIconBadge">
@@ -945,7 +947,7 @@
             </div>
           </div>
 
-          <div class="sub-panel wireless-standalone-card" data-layout-id="sys_wireless_bt" data-layout-label="Bluetooth">
+          <div class="sub-panel wireless-standalone-card" data-layout-id="sys_wireless_bt" data-layout-group="wireless" data-layout-label="Bluetooth">
             <div class="wireless-item-row">
               <div class="wireless-item-left">
                 <div class="wireless-icon-badge" id="btIconBadge">
@@ -1029,7 +1031,7 @@
             </div>
           </div>
 
-          <div class="section-block" data-layout-id="sys_power" data-layout-label="Güç ve Oturum Yönetimi">
+          <div class="section-block" data-layout-id="sys_power" data-layout-group="power" data-layout-label="Güç ve Oturum Yönetimi">
             <h2 class="section-title">Güç ve Oturum Yönetimi</h2>
             <div class="power-grid">
               <button type="button" class="power-card" data-power="lock" id="powerLockBtn">
@@ -1073,7 +1075,7 @@
             </div>
           </div>
 
-          <div class="layout-standalone-action" data-layout-id="sys_function_prefs" data-layout-label="Özelleştirmeler Butonu">
+          <div class="layout-standalone-action" data-layout-id="sys_function_prefs" data-layout-group="power" data-layout-label="Özelleştirmeler Butonu">
             <button type="button" class="btn-secondary btn-full function-prefs-open-btn" id="openFunctionPrefsBtn">
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <path d="M4 6h8M15 6h1M4 14h2M9 14h7" stroke-linecap="round" />
@@ -1094,19 +1096,20 @@
       <div class="layout-edit-top-row">
         <div class="layout-edit-info">
           <span class="layout-edit-dot"></span>
-          <span class="layout-edit-title">Ögeyi Sürükleyin (Başka Sayfaya Taşımak İçin Sekmeye Bırakın)</span>
+          <span class="layout-edit-title">Sol üstteki noktadan tutup sürükleyin</span>
         </div>
         <div class="layout-edit-actions">
-          <button type="button" class="btn-secondary btn-compact" id="resetPageLayoutBtn">Sıfırla</button>
-          <button type="button" class="btn-primary btn-compact" id="donePageLayoutBtn">Tamam</button>
+          <button type="button" class="icon-action-btn" id="resetPageLayoutBtn" title="Varsayılan Düzene Sıfırla" aria-label="Varsayılan Düzene Sıfırla">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M4.5 9.5a5.5 5.5 0 1 1 1.4 3.7M4.5 5v4.5H9" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" class="icon-action-btn primary" id="donePageLayoutBtn" title="Düzenlemeyi Tamamla" aria-label="Düzenlemeyi Tamamla">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </div>
-      </div>
-      <div class="layout-page-target-row" id="layoutPageTargetRow">
-        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-scenes">Hızlı Erişim</button>
-        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-macros">Makrolar</button>
-        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-apps">Uygulamalar</button>
-        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-remote">Kontrol</button>
-        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-system">Sistem</button>
       </div>
     </div>
 
@@ -1328,9 +1331,17 @@
           <div class="scene-items-editor-list" id="sceneEditorItemsList"></div>
         </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" id="cancelSceneModalBtn">Vazgeç</button>
-          <button type="button" class="btn-primary" id="saveSceneConfirmBtn">Kaydet</button>
+        <div class="modal-footer modal-footer-icons">
+          <button type="button" class="icon-action-btn danger hidden" id="deleteSceneModalBtn" title="Sahneyi Sil" aria-label="Sahneyi Sil">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" class="icon-action-btn primary" id="saveSceneConfirmBtn" title="Kaydet" aria-label="Kaydet">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -1395,24 +1406,24 @@
               </button>
             </div>
           </div>
-          <div class="snap-extra-actions">
-            <button type="button" class="icon-action-btn" id="snapInspectWinBtn" title="Özellikler" aria-label="Özellikler">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                <circle cx="10" cy="10" r="2.5" />
-                <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
-              </svg>
-            </button>
-            <button type="button" class="icon-action-btn" id="snapMinimizeWinBtn" title="Simge Durumu" aria-label="Simge Durumu">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M5 14h10" stroke-linecap="round" />
-              </svg>
-            </button>
-            <button type="button" class="icon-action-btn danger" id="snapCloseWinBtn" title="Pencereyi Kapat" aria-label="Pencereyi Kapat">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
-                <path d="M5.5 5.5l9 9M14.5 5.5l-9 9" stroke-linecap="round" />
-              </svg>
-            </button>
-          </div>
+        </div>
+        <div class="modal-footer modal-footer-icons">
+          <button type="button" class="icon-action-btn" id="snapInspectWinBtn" title="Özellikler" aria-label="Özellikler">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="10" cy="10" r="2.5" />
+              <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button type="button" class="icon-action-btn" id="snapMinimizeWinBtn" title="Simge Durumu" aria-label="Simge Durumu">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M5 14h10" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button type="button" class="icon-action-btn danger" id="snapCloseWinBtn" title="Pencereyi Kapat / Sonlandır" aria-label="Pencereyi Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -1670,8 +1681,8 @@
           <div class="scene-items-editor-list" id="qaEditorItemsList"></div>
         </div>
 
-        <div class="modal-footer">
-          <button type="button" class="icon-action-btn danger hidden" id="deleteQaModalBtn" title="Sil" aria-label="Sil">
+        <div class="modal-footer modal-footer-icons">
+          <button type="button" class="icon-action-btn danger hidden" id="deleteQaModalBtn" title="Butonu Sil" aria-label="Butonu Sil">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
               <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
@@ -1682,8 +1693,11 @@
               <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
             </svg>
           </button>
-          <button type="button" class="btn-secondary" id="cancelQaModalBtn">Vazgeç</button>
-          <button type="button" class="btn-primary" id="saveQaConfirmBtn">Kaydet</button>
+          <button type="button" class="icon-action-btn primary" id="saveQaConfirmBtn" title="Kaydet" aria-label="Kaydet">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -1795,9 +1809,12 @@
             </div>
           </div>
 
-          <div class="modal-footer">
-            <button type="button" class="btn-secondary" id="cancelCustomAppModalBtn">Vazgeç</button>
-            <button type="submit" class="btn-primary">Kaydet</button>
+          <div class="modal-footer modal-footer-icons">
+            <button type="submit" class="icon-action-btn primary" id="saveManualAppSubmitBtn" title="Kaydet" aria-label="Kaydet">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
           </div>
         </form>
       </div>
@@ -1869,7 +1886,11 @@
         <div class="modal-body">
           <div class="audit-log-toolbar">
             <span class="mono-caption" id="auditLogCountCaption">0 kayıt</span>
-            <button type="button" class="btn-compact btn-ghost" id="clearAuditLogBtn">Geçmişi Temizle</button>
+            <button type="button" class="icon-btn icon-btn-sm" id="clearAuditLogBtn" title="Geçmişi Temizle" aria-label="Geçmişi Temizle">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
           </div>
           <div class="audit-log-timeline" id="auditLogTimeline"></div>
         </div>
@@ -1912,17 +1933,23 @@
 
         <div class="modal-body">
           <div class="device-detail-grid" id="deviceDetailInfoGrid"></div>
-          <div class="device-detail-actions">
-            <button type="button" class="btn-secondary btn-full" id="detailModalWolBtn">
-              Ağdan Uyandır (Wake-on-LAN)
-            </button>
-            <button type="button" class="btn-secondary btn-full hidden" id="detailModalDisconnectBtn">
-               Aktif Bağlantıyı Kes
-            </button>
-            <button type="button" class="btn-danger btn-full" id="detailModalDeleteBtn">
-              Cihazı Sil (Eşleşmeyi Kaldır)
-            </button>
-          </div>
+        </div>
+        <div class="modal-footer modal-footer-icons">
+          <button type="button" class="icon-action-btn" id="detailModalWolBtn" title="Ağdan Uyandır (Wake-on-LAN)" aria-label="Ağdan Uyandır">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M10 3v7m4.95-4.95a7 7 0 1 1-9.9 0" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button type="button" class="icon-action-btn hidden" id="detailModalDisconnectBtn" title="Aktif Bağlantıyı Kes" aria-label="Aktif Bağlantıyı Kes">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M7.5 12.5l5-5m-6.8 1.8l-1.4 1.4a3.2 3.2 0 0 0 4.5 4.5l1.4-1.4m1.6-6.1l1.4-1.4a3.2 3.2 0 0 0-4.5-4.5l-1.4 1.4M3.5 3.5l13 13" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" class="icon-action-btn danger" id="detailModalDeleteBtn" title="Cihazı Sil (Eşleşmeyi Kaldır)" aria-label="Cihazı Sil">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -1958,9 +1985,17 @@
           </div>
         </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" id="resetQuickTilesBtn">Varsayılana Dön</button>
-          <button type="button" class="btn-primary" id="saveQuickTilesBtn">Uygula</button>
+        <div class="modal-footer modal-footer-icons">
+          <button type="button" class="icon-action-btn" id="resetQuickTilesBtn" title="Varsayılana Dön" aria-label="Varsayılana Dön">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M3.5 10a6.5 6.5 0 1 0 1.9-4.6L3.5 7.2M3.5 3.5v3.7h3.7" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" class="icon-action-btn primary" id="saveQuickTilesBtn" title="Uygula" aria-label="Uygula">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -2070,7 +2105,7 @@
                   <optgroup label="Harfler (A - Z)">
                     <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
                     <option value="E">E</option><option value="F">F</option><option value="G">G</option><option value="H">H</option>
-                    <option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="K">K</option><option value="L">L</option>
+                    <option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="L">L</option>
                     <option value="M">M</option><option value="N">N</option><option value="O">O</option><option value="P">P</option>
                     <option value="Q">Q</option><option value="R">R</option><option value="S">S</option><option value="T">T</option>
                     <option value="U">U</option><option value="V">V</option><option value="W">W</option><option value="X">X</option>
@@ -2202,9 +2237,37 @@
           </div>
         </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn-danger hidden" id="deleteMacroModalBtn">Makroyu Sil</button>
-          <button type="button" class="btn-primary btn-full" id="saveMacroModalBtn">Makroyu Kaydet</button>
+        <div class="modal-footer modal-footer-icons">
+          <button type="button" class="icon-action-btn danger hidden" id="deleteMacroModalBtn" title="Makroyu Sil" aria-label="Makroyu Sil">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button type="button" class="icon-action-btn primary" id="saveMacroModalBtn" title="Makroyu Kaydet" aria-label="Makroyu Kaydet">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 15: EKRAN PARLAKLIĞI ÇEKMECE MENÜSÜ -->
+    <div class="modal-backdrop hidden" id="monitorBrightnessModal">
+      <div class="modal-sheet">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">Ekran Parlaklığı</h2>
+            <p class="modal-subtitle">Monitörlerin parlaklık ve karartma seviyesini ayarlayın</p>
+          </div>
+          <button type="button" class="icon-btn" id="closeBrightnessModalBtn" aria-label="Kapat">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="brightness-list" id="monitorsBrightnessList"></div>
         </div>
       </div>
     </div>

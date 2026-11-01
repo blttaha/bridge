@@ -3555,6 +3555,9 @@
     if (!state.isStreaming && fpsBadge) {
       fpsBadge.textContent = 'TRACKPAD · HAZIR';
     }
+    if (typeof syncMergedLayoutGroups === 'function') {
+      syncMergedLayoutGroups();
+    }
   }
 
   async function startRemoteStream() {
@@ -3964,6 +3967,9 @@
           .join('');
       } else {
         devRow.classList.add('hidden');
+      }
+      if (typeof syncMergedLayoutGroups === 'function') {
+        syncMergedLayoutGroups();
       }
     }
 
@@ -4781,6 +4787,10 @@
     if (otherSel) {
       otherSel.value = (existingScene && existingScene.otherWindowsMode) || 'keep';
     }
+    const delSceneBtn = document.getElementById('deleteSceneModalBtn');
+    if (delSceneBtn) {
+      delSceneBtn.classList.toggle('hidden', !existingScene);
+    }
 
     populateAppDropdown();
     renderComposerMonitorPills();
@@ -5593,11 +5603,28 @@
               <span class="prop-kv-val">${escapeHtml(lastRunTxt)}</span>
             </div>
           </div>
-          <div class="prop-actions-grid">
-            <button type="button" class="btn-primary" data-prop-action="run_qa">Şimdi Başlat</button>
-            <button type="button" class="btn-secondary" data-prop-action="edit_qa">Düzenle</button>
-            <button type="button" class="btn-secondary" data-prop-action="dup_qa">Çoğalt</button>
-            <button type="button" class="btn-danger" data-prop-action="del_qa">Sil</button>
+          <div class="prop-actions-grid prop-actions-icons">
+            <button type="button" class="icon-action-btn primary" data-prop-action="run_qa" title="Şimdi Başlat" aria-label="Şimdi Başlat">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M6.5 4.5l8.5 5.5-8.5 5.5V4.5z" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <button type="button" class="icon-action-btn" data-prop-action="edit_qa" title="Düzenle" aria-label="Düzenle">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <button type="button" class="icon-action-btn" data-prop-action="dup_qa" title="Çoğalt" aria-label="Çoğalt">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <rect x="7" y="7" width="9" height="9" rx="1.5" />
+                <path d="M4 13V5a1.5 1.5 0 0 1 1.5-1.5H13" stroke-linecap="round" />
+              </svg>
+            </button>
+            <button type="button" class="icon-action-btn danger" data-prop-action="del_qa" title="Sil" aria-label="Sil">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
           </div>
         </div>
       `);
@@ -5621,7 +5648,11 @@
                     <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
                   </svg>
                 </button>
-                <button type="button" class="btn-primary btn-compact" data-prop-run-subitem="${idx}">Aç</button>
+                <button type="button" class="icon-action-btn primary" data-prop-run-subitem="${idx}" title="Aç" aria-label="Aç">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M6.5 4.5l8.5 5.5-8.5 5.5V4.5z" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </div>
             </div>
           `;
@@ -5651,7 +5682,11 @@
               <div class="window-row-proc">${escapeHtml(it.appName || it.processName)}</div>
               <div class="mono-stat">Ekran ${Number(it.monitorIndex || 0) + 1} · ${escapeHtml(ZONE_LABELS[it.zonePreset] || 'Özel')}</div>
             </div>
-            <button type="button" class="btn-primary btn-compact" data-prop-run-scene-item="${idx}">Aç</button>
+            <button type="button" class="icon-action-btn primary" data-prop-run-scene-item="${idx}" title="Aç" aria-label="Aç">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M6.5 4.5l8.5 5.5-8.5 5.5V4.5z" stroke-linejoin="round" />
+              </svg>
+            </button>
           </div>
         `
         )
@@ -5663,9 +5698,17 @@
             <span class="sub-panel-title">Sahne İçeriği (${items.length} Uygulama)</span>
           </div>
           <div class="scene-items-editor-list">${rows}</div>
-          <div class="prop-actions-grid">
-            <button type="button" class="btn-primary" data-prop-action="run_scene">Sahneyi Uygula</button>
-            <button type="button" class="btn-secondary" data-prop-action="edit_scene">Sahneyi Düzenle</button>
+          <div class="prop-actions-grid prop-actions-icons">
+            <button type="button" class="icon-action-btn primary" data-prop-action="run_scene" title="Sahneyi Uygula" aria-label="Sahneyi Uygula">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M6.5 4.5l8.5 5.5-8.5 5.5V4.5z" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <button type="button" class="icon-action-btn" data-prop-action="edit_scene" title="Sahneyi Düzenle" aria-label="Sahneyi Düzenle">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
           </div>
         </div>
       `);
@@ -5704,18 +5747,26 @@
             </div>
           </div>
 
-          <div class="prop-actions-grid">
-            <button type="button" class="btn-secondary" data-prop-win-cmd="toggle_topmost">
-              ${topMost ? 'Üstte Tutmayı Kaldır' : 'Her Zaman Üstte Tut'}
+          <div class="prop-actions-grid prop-actions-icons">
+            <button type="button" class="icon-action-btn ${topMost ? 'primary' : ''}" data-prop-win-cmd="toggle_topmost" title="${topMost ? 'Üstte Tutmayı Kaldır' : 'Her Zaman Üstte Tut'}" aria-label="Her Zaman Üstte Tut">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M12.5 3.5l4 4-1.5 1.5-2-1-2.5 2.5 1 3-1.5 1.5-3-3-3.5 3.5M10 10L6.5 6.5l1.5-1.5 3 1 2.5-2.5-1-2z" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
             </button>
-            <button type="button" class="btn-secondary" data-prop-win-cmd="open_file_location">
-              Dosya Konumunu Aç
+            <button type="button" class="icon-action-btn" data-prop-win-cmd="open_file_location" title="Dosya Konumunu Aç" aria-label="Dosya Konumunu Aç">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M2.5 6a1.5 1.5 0 0 1 1.5-1.5h3.6l1.8 1.8H16A1.5 1.5 0 0 1 17.5 7.8v6.7A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5V6z" stroke-linejoin="round" />
+              </svg>
             </button>
-            <button type="button" class="btn-secondary" data-prop-win-cmd="maximize">
-              Tam Ekran Yap
+            <button type="button" class="icon-action-btn" data-prop-win-cmd="maximize" title="Tam Ekran Yap" aria-label="Tam Ekran Yap">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M4 8V4h4M16 8V4h-4M4 12v4h4M16 12v4h-4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
             </button>
-            <button type="button" class="btn-danger" data-prop-win-cmd="kill_process">
-              İşlemi Sonlandır
+            <button type="button" class="icon-action-btn danger" data-prop-win-cmd="kill_process" title="İşlemi Sonlandır" aria-label="İşlemi Sonlandır">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
             </button>
           </div>
         </div>
@@ -5791,12 +5842,16 @@
           ${
             context.kind === 'installed_app' && context.app && context.app.isCustom
               ? `
-                <div class="prop-actions-grid">
-                  <button type="button" class="btn-secondary" data-prop-action="edit_custom_app">
-                    Özel Uygulamayı Düzenle
+                <div class="prop-actions-grid prop-actions-icons">
+                  <button type="button" class="icon-action-btn" data-prop-action="edit_custom_app" title="Özel Uygulamayı Düzenle" aria-label="Özel Uygulamayı Düzenle">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
                   </button>
-                  <button type="button" class="btn-danger" data-prop-action="del_custom_app">
-                    Katalogdan Kaldır
+                  <button type="button" class="icon-action-btn danger" data-prop-action="del_custom_app" title="Katalogdan Kaldır" aria-label="Katalogdan Kaldır">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
                   </button>
                 </div>
               `
@@ -5998,6 +6053,27 @@
     let twoFingerLastX = 0;
     let twoFingerMoved = false;
     let singleTapTimer = null;
+    let lastTouchSampleTs = 0;
+    let smoothedVelocity = 0;
+
+    // Windows Precision Touchpad / libinput-inspired continuous pointer acceleration curve (px/ms)
+    function computeSmartTrackpadGain(instVelocityPxPerMs, stepHypotPx) {
+      // Exponential moving average so single-frame touch jitter doesn't spike cursor speed
+      smoothedVelocity = smoothedVelocity * 0.55 + instVelocityPxPerMs * 0.45;
+      const v = Math.max(0, smoothedVelocity);
+
+      // 1. Sub-pixel Precision Zone (< 0.18 px/ms): damped gain (0.48x -> 0.92x) for effortless pixel-level targeting
+      if (v < 0.18 && stepHypotPx < 2.8) {
+        return 0.48 + (v / 0.18) * 0.44;
+      }
+      // 2. Comfort Tracking Zone (0.18 -> 0.85 px/ms): smooth linear ramp (0.92x -> 1.75x)
+      if (v <= 0.85) {
+        return 0.92 + ((v - 0.18) / 0.67) * 0.83;
+      }
+      // 3. Ballistic Flick Zone (> 0.85 px/ms): progressive power boost up to 3.25x to traverse dual monitors in one flick
+      const excess = v - 0.85;
+      return Math.min(3.25, 1.75 + Math.pow(excess, 1.08) * 0.92);
+    }
 
     function clearHoldTimer() {
       if (holdTimer) {
@@ -6099,6 +6175,8 @@
           relAccY = 0;
           totalMovedPx = 0;
           touchStartTs = performance.now();
+          lastTouchSampleTs = touchStartTs;
+          smoothedVelocity = 0;
           autoHoldTriggered = false;
           directDragActive = false;
           trackpadDragHoldActive = false;
@@ -6224,20 +6302,24 @@
           }
 
           if (effectiveMode === 'trackpad') {
-            // Sub-pixel relative hardware mouse movement with 1:1 isotropic X/Y speed in all modes & orientations
+            // Sub-pixel relative hardware mouse movement with 1:1 isotropic X/Y speed & Precision Touchpad velocity curve
             const boxW = Math.max(240, (state.isStreaming && screenImg.clientWidth) || viewport.clientWidth || 340);
             const boxH = Math.max(150, (state.isStreaming && screenImg.clientHeight) || viewport.clientHeight || 220);
             const pcW = (state.streamBounds && state.streamBounds.width) || 1920;
             const pcH = (state.streamBounds && state.streamBounds.height) || 1080;
 
-            const velocity = Math.hypot(dx, dy);
-            const accel = velocity > 14 ? 1.42 : velocity > 6 ? 1.18 : 1.0;
+            const now = performance.now();
+            const dt = Math.max(4, Math.min(45, now - (lastTouchSampleTs || now - 12)));
+            lastTouchSampleTs = now;
+            const stepHypot = Math.hypot(dx, dy);
+            const instVelPxPerMs = stepHypot / dt;
+            const accel = computeSmartTrackpadGain(instVelPxPerMs, stepHypot);
             const sens = (state.cursorSensitivity * accel) / Math.max(1, state.zoomScale * 0.75);
 
             // Use a uniform isotropic scale factor so horizontal and vertical speeds are strictly identical (including Fullscreen Touchpad)
             const refBoxSpan = Math.max(240, Math.min(boxW, boxH));
             const refPcSpan = Math.max(1080, Math.min(pcW, pcH));
-            const isoScale = (refPcSpan / refBoxSpan) * 1.15;
+            const isoScale = (refPcSpan / refBoxSpan) * 1.12;
 
             relAccX += dx * sens * isoScale;
             relAccY += dy * sens * isoScale;
@@ -6252,7 +6334,6 @@
               applyStageZoomAndPan();
             }
 
-            const now = performance.now();
             if (now - lastMoveSendTs >= 12) {
               const stepX = Math.trunc(relAccX);
               const stepY = Math.trunc(relAccY);
@@ -6946,7 +7027,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.3';
+    let currentAppVer = '2.19.4';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -7918,9 +7999,12 @@
     document.getElementById('closeQaModalBtn').addEventListener('click', () => {
       closeModal('quickActionComposerModal');
     });
-    document.getElementById('cancelQaModalBtn').addEventListener('click', () => {
-      closeModal('quickActionComposerModal');
-    });
+    const cancelQaModalBtn = document.getElementById('cancelQaModalBtn');
+    if (cancelQaModalBtn) {
+      cancelQaModalBtn.addEventListener('click', () => {
+        closeModal('quickActionComposerModal');
+      });
+    }
 
     const delQaModalBtn = document.getElementById('deleteQaModalBtn');
     if (delQaModalBtn) {
@@ -8632,9 +8716,28 @@
     document.getElementById('closeSceneModalBtn').addEventListener('click', () => {
       closeModal('sceneComposerModal');
     });
-    document.getElementById('cancelSceneModalBtn').addEventListener('click', () => {
-      closeModal('sceneComposerModal');
-    });
+    const cancelSceneModalBtn = document.getElementById('cancelSceneModalBtn');
+    if (cancelSceneModalBtn) {
+      cancelSceneModalBtn.addEventListener('click', () => {
+        closeModal('sceneComposerModal');
+      });
+    }
+    const delSceneModalBtn = document.getElementById('deleteSceneModalBtn');
+    if (delSceneModalBtn) {
+      delSceneModalBtn.addEventListener('click', async () => {
+        if (!state.editingSceneId) return;
+        triggerHaptic(16);
+        try {
+          const res = await sendCommand('delete_scene', { sceneId: state.editingSceneId });
+          state.scenes = res.scenes || [];
+          renderScenesList();
+          closeModal('sceneComposerModal');
+          showToast('Sahne silindi');
+        } catch (err) {
+          showToast(err.message);
+        }
+      });
+    }
 
     document.querySelectorAll('[data-app-source]').forEach((tab) => {
       tab.addEventListener('click', () => {
@@ -8809,7 +8912,71 @@
       }
     });
 
-    // TAB 2: MONITORS & TOPOLOGY & LIVE WINDOWS
+    // TAB 2: MONITORS & TOPOLOGY & LIVE WINDOWS & URL LAUNCHER
+    const openBrightnessBtn = document.getElementById('openBrightnessDrawerBtn');
+    if (openBrightnessBtn) {
+      openBrightnessBtn.addEventListener('click', () => {
+        triggerHaptic(12);
+        renderMonitorsBrightnessList();
+        openModal('monitorBrightnessModal');
+      });
+    }
+
+    const closeBrightnessBtn = document.getElementById('closeBrightnessModalBtn');
+    if (closeBrightnessBtn) {
+      closeBrightnessBtn.addEventListener('click', () => {
+        closeModal('monitorBrightnessModal');
+      });
+    }
+
+    const remoteUrlForm = document.getElementById('remoteUrlSearchForm');
+    if (remoteUrlForm) {
+      remoteUrlForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const inputEl = document.getElementById('remoteUrlSearchInput');
+        const raw = inputEl ? inputEl.value.trim() : '';
+        if (!raw) return;
+        triggerHaptic(14);
+
+        const isExplicitUrl = /^https?:\/\//i.test(raw);
+        const isLocalhost = /^localhost(:\d+)?(\/.*)?$/i.test(raw) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/.*)?$/.test(raw);
+        const isDomainLike =
+          !raw.includes(' ') &&
+          /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/.*)?$/i.test(raw);
+
+        let finalUrl = '';
+        let toastLabel = '';
+        if (isExplicitUrl) {
+          finalUrl = raw;
+          toastLabel = 'URL bilgisayarda açılıyor';
+        } else if (isLocalhost) {
+          finalUrl = `http://${raw}`;
+          toastLabel = 'Yerel adres bilgisayarda açılıyor';
+        } else if (isDomainLike) {
+          finalUrl = `https://${raw}`;
+          toastLabel = `${raw} bilgisayarda açılıyor`;
+        } else {
+          finalUrl = `https://www.google.com/search?q=${encodeURIComponent(raw)}`;
+          toastLabel = `"${raw}" bilgisayarda aratılıyor`;
+        }
+
+        if (inputEl) {
+          inputEl.value = '';
+          inputEl.blur();
+        }
+        try {
+          await sendCommand('launch_app', {
+            name: raw,
+            targetType: 'url',
+            launchPath: finalUrl
+          });
+          showToast(toastLabel);
+        } catch (err) {
+          showToast(err.message || 'Tarayıcı açılamadı');
+        }
+      });
+    }
+
     document.getElementById('allMonitorsOffBtn').addEventListener('click', async () => {
       triggerHaptic(15);
       try {
@@ -9748,6 +9915,14 @@
         const curEl = document.getElementById('mediaCurrentTime');
         if (curEl) curEl.textContent = formatMediaTime(Number(mediaSeekSlider.value));
       });
+      const releaseSeekLock = () => {
+        setTimeout(() => {
+          state.isSeekingMedia = false;
+        }, 120);
+      };
+      mediaSeekSlider.addEventListener('touchend', releaseSeekLock, { passive: true });
+      mediaSeekSlider.addEventListener('touchcancel', releaseSeekLock, { passive: true });
+      mediaSeekSlider.addEventListener('mouseup', releaseSeekLock);
       mediaSeekSlider.addEventListener('change', () => {
         const targetSec = Number(mediaSeekSlider.value);
         state.isSeekingMedia = false;
@@ -9755,6 +9930,17 @@
         performMediaSeek(targetSec);
       });
     }
+
+    // Automatically blur <select> elements after selection so focus highlight never gets stuck on mobile
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.tagName === 'SELECT' && typeof e.target.blur === 'function') {
+        setTimeout(() => {
+          try {
+            e.target.blur();
+          } catch {}
+        }, 20);
+      }
+    });
 
     // Per-Monitor Screen Brightness Sliders (Stacked Ekran 1, Ekran 2, ...) - Pure smooth native feel matching master volume
     const monitorsBrightnessList = document.getElementById('monitorsBrightnessList');
@@ -10076,30 +10262,69 @@
   }
 
   function ensureLayoutGripDots(itemEl) {
-    if (!itemEl || itemEl.querySelector('.layout-grip-dots')) return;
-    const grip = document.createElement('span');
-    grip.className = 'layout-grip-dots';
-    grip.setAttribute('aria-hidden', 'true');
-    grip.innerHTML = `
-      <svg viewBox="0 0 12 16" fill="currentColor">
-        <rect x="2" y="2" width="2.4" height="2.4" rx="0.6"/>
-        <rect x="7.6" y="2" width="2.4" height="2.4" rx="0.6"/>
-        <rect x="2" y="6.8" width="2.4" height="2.4" rx="0.6"/>
-        <rect x="7.6" y="6.8" width="2.4" height="2.4" rx="0.6"/>
-        <rect x="2" y="11.6" width="2.4" height="2.4" rx="0.6"/>
-        <rect x="7.6" y="11.6" width="2.4" height="2.4" rx="0.6"/>
-      </svg>
-    `;
-
-    const titleTarget = itemEl.querySelector(
-      '.section-title-lg, .section-title, .remote-touchpad-header-title, .sub-panel-title, .wireless-title, .audio-label, .now-playing-title'
-    );
-    if (titleTarget) {
-      titleTarget.insertBefore(grip, titleTarget.firstChild);
+    if (!itemEl) return;
+    let grip = itemEl.querySelector(':scope > .layout-grip-dots');
+    if (!grip) {
+      const nested = itemEl.querySelector('.layout-grip-dots');
+      if (nested) nested.remove();
+      grip = document.createElement('span');
+      grip.className = 'layout-grip-dots';
+      grip.setAttribute('aria-hidden', 'true');
+      grip.innerHTML = `
+        <svg viewBox="0 0 12 16" fill="currentColor">
+          <rect x="2" y="2" width="2.4" height="2.4" rx="0.6"/>
+          <rect x="7.6" y="2" width="2.4" height="2.4" rx="0.6"/>
+          <rect x="2" y="6.8" width="2.4" height="2.4" rx="0.6"/>
+          <rect x="7.6" y="6.8" width="2.4" height="2.4" rx="0.6"/>
+          <rect x="2" y="11.6" width="2.4" height="2.4" rx="0.6"/>
+          <rect x="7.6" y="11.6" width="2.4" height="2.4" rx="0.6"/>
+        </svg>
+      `;
     } else {
-      grip.classList.add('layout-grip-floating');
+      grip.classList.remove('layout-grip-floating');
+    }
+    if (itemEl.firstElementChild !== grip) {
       itemEl.insertBefore(grip, itemEl.firstChild);
     }
+  }
+
+  function syncMergedLayoutGroups() {
+    const isEdit = document.body.classList.contains('layout-edit-mode');
+    document.querySelectorAll('[data-layout-container]').forEach((containerEl) => {
+      const allItems = Array.from(containerEl.children).filter((el) => el.hasAttribute('data-layout-id'));
+      allItems.forEach((el) => {
+        el.classList.remove('is-group-merged-top', 'is-group-merged-mid', 'is-group-merged-bottom');
+      });
+      if (isEdit) return;
+
+      const visibleItems = allItems.filter((el) => {
+        if (el.classList.contains('hidden')) return false;
+        const cs = window.getComputedStyle(el);
+        return cs && cs.display !== 'none';
+      });
+
+      let i = 0;
+      while (i < visibleItems.length) {
+        const grp = visibleItems[i].getAttribute('data-layout-group');
+        if (!grp) {
+          i++;
+          continue;
+        }
+        let j = i + 1;
+        while (j < visibleItems.length && visibleItems[j].getAttribute('data-layout-group') === grp) {
+          j++;
+        }
+        const runLen = j - i;
+        if (runLen >= 2) {
+          visibleItems[i].classList.add('is-group-merged-top');
+          for (let k = i + 1; k < j - 1; k++) {
+            visibleItems[k].classList.add('is-group-merged-mid');
+          }
+          visibleItems[j - 1].classList.add('is-group-merged-bottom');
+        }
+        i = j;
+      }
+    });
   }
 
   function snapshotDefaultGlobalLayouts() {
@@ -10154,6 +10379,8 @@
         }
       });
     });
+
+    syncMergedLayoutGroups();
   }
 
   function persistAllContainersLayoutOrder() {
@@ -10166,13 +10393,7 @@
         .map((el) => el.getAttribute('data-layout-id'));
     });
     savePageLayoutsMap(map);
-  }
-
-  function syncLayoutTargetPillsActiveState() {
-    const curTab = state.activeTab || 'tab-scenes';
-    document.querySelectorAll('#layoutPageTargetRow [data-layout-target-tab]').forEach((btn) => {
-      btn.classList.toggle('active', btn.getAttribute('data-layout-target-tab') === curTab);
-    });
+    syncMergedLayoutGroups();
   }
 
   function enterPageLayoutEditMode() {
@@ -10182,9 +10403,7 @@
     document.body.classList.add('layout-edit-mode');
     const banner = document.getElementById('layoutEditBanner');
     if (banner) banner.classList.remove('hidden');
-    const pageRow = document.getElementById('layoutPageTargetRow');
-    if (pageRow) pageRow.classList.toggle('hidden', Boolean(state.showingHubView));
-    syncLayoutTargetPillsActiveState();
+    syncMergedLayoutGroups();
     triggerHaptic(28);
   }
 
@@ -10198,6 +10417,7 @@
       el.style.transform = '';
       el.style.zIndex = '';
     });
+    syncMergedLayoutGroups();
     triggerHaptic(12);
   }
 
@@ -10217,6 +10437,7 @@
     try {
       localStorage.removeItem(PAGE_LAYOUT_STORAGE_KEY);
     } catch {}
+    syncMergedLayoutGroups();
     triggerHaptic(20);
     showToast('Tüm sayfa ve öge konumları varsayılana sıfırlandı');
   }
@@ -10235,19 +10456,6 @@
     if (doneBtn) {
       doneBtn.addEventListener('click', () => {
         exitPageLayoutEditMode();
-      });
-    }
-
-    const pageTargetRow = document.getElementById('layoutPageTargetRow');
-    if (pageTargetRow) {
-      pageTargetRow.addEventListener('click', (e) => {
-        const pill = e.target.closest('[data-layout-target-tab]');
-        if (!pill) return;
-        const targetTab = pill.getAttribute('data-layout-target-tab');
-        if (targetTab) {
-          switchToTab(targetTab, true);
-          syncLayoutTargetPillsActiveState();
-        }
       });
     }
 
@@ -10278,6 +10486,15 @@
     let autoScrollRaf = null;
     let hoveredTargetTab = null;
     let hoverTabSwitchTimer = null;
+    let lastEdgeTabSwitchTs = 0;
+
+    const TAB_FRIENDLY_NAMES = {
+      'tab-scenes': 'Hızlı Erişim',
+      'tab-macros': 'Sahneler & Makrolar',
+      'tab-apps': 'Uygulamalar',
+      'tab-remote': 'Kontrol',
+      'tab-system': 'Sistem'
+    };
 
     const clearLongPress = () => {
       if (longPressTimer) {
@@ -10309,7 +10526,6 @@
       if (newContainer === dragContainerEl) return false;
 
       switchToTab(targetTabId, true);
-      syncLayoutTargetPillsActiveState();
 
       dragItemEl.style.transform = '';
       newContainer.appendChild(dragItemEl);
@@ -10323,27 +10539,33 @@
       persistAllContainersLayoutOrder();
       triggerHaptic(22);
       const label = dragItemEl.getAttribute('data-layout-label') || 'Öge';
-      const tabBtn = document.querySelector(`#layoutPageTargetRow [data-layout-target-tab="${targetTabId}"]`);
-      const tabName = tabBtn ? tabBtn.textContent.trim() : 'Yeni Sayfa';
+      const tabName = TAB_FRIENDLY_NAMES[targetTabId] || 'Yeni Sayfa';
       showToast(`${label} → ${tabName} sayfasına taşındı`);
       return true;
     };
 
     const detectCrossPageTabTargetAtPoint = (clientX, clientY) => {
       if (state.showingHubView) return null;
-      const pills = Array.from(document.querySelectorAll('#layoutPageTargetRow [data-layout-target-tab]'));
-      for (const pill of pills) {
-        const r = pill.getBoundingClientRect();
-        if (clientX >= r.left && clientX <= r.right && clientY >= r.top - 6 && clientY <= r.bottom + 6) {
-          return { tabId: pill.getAttribute('data-layout-target-tab'), el: pill };
-        }
-      }
+      // 1. Bottom Navbar Icons
       const navBtns = Array.from(document.querySelectorAll('#bottomNav .nav-item[data-tab]'));
       for (const btn of navBtns) {
         const r = btn.getBoundingClientRect();
-        if (clientX >= r.left && clientX <= r.right && clientY >= r.top - 6 && clientY <= r.bottom + 6) {
+        if (clientX >= r.left && clientX <= r.right && clientY >= r.top - 10 && clientY <= r.bottom + 10) {
           return { tabId: btn.getAttribute('data-tab'), el: btn };
         }
+      }
+      // 2. Left / Right Screen Edge Drag to Adjacent Page
+      const vw = window.innerWidth || 360;
+      const curIdx = TAB_ORDER.indexOf(state.activeTab || 'tab-scenes');
+      if (curIdx > 0 && clientX <= 34) {
+        const prevTab = TAB_ORDER[curIdx - 1];
+        const prevBtn = document.querySelector(`#bottomNav .nav-item[data-tab="${prevTab}"]`);
+        return { tabId: prevTab, el: prevBtn, isEdge: true };
+      }
+      if (curIdx >= 0 && curIdx < TAB_ORDER.length - 1 && clientX >= vw - 34) {
+        const nextTab = TAB_ORDER[curIdx + 1];
+        const nextBtn = document.querySelector(`#bottomNav .nav-item[data-tab="${nextTab}"]`);
+        return { tabId: nextTab, el: nextBtn, isEdge: true };
       }
       return null;
     };
@@ -10391,19 +10613,23 @@
       let dy = clientY - dragAnchorY;
       dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
 
-      // Check if hovering over a cross-page tab target pill or bottom navbar icon
+      // Check if hovering over a bottom navbar icon or left/right screen edge to carry item to another page
       const tabHit = detectCrossPageTabTargetAtPoint(clientX, clientY);
       if (tabHit && tabHit.tabId && tabHit.tabId !== dragContainerEl.id) {
+        if (tabHit.isEdge && performance.now() - lastEdgeTabSwitchTs < 650) {
+          return;
+        }
         if (hoveredTargetTab !== tabHit.tabId) {
           clearHoverTabSwitch();
           hoveredTargetTab = tabHit.tabId;
-          tabHit.el.classList.add('is-drop-hover');
+          if (tabHit.el) tabHit.el.classList.add('is-drop-hover');
           hoverTabSwitchTimer = setTimeout(() => {
             if (dragItemEl && hoveredTargetTab === tabHit.tabId) {
+              lastEdgeTabSwitchTs = performance.now();
               moveDraggedItemToTabContainer(tabHit.tabId);
               clearHoverTabSwitch();
             }
-          }, 280);
+          }, tabHit.isEdge ? 340 : 240);
         }
         return;
       } else if (hoveredTargetTab) {
@@ -10411,20 +10637,21 @@
       }
 
       const draggedRect = dragItemEl.getBoundingClientRect();
-      const draggedCenterY = draggedRect.top + draggedRect.height / 2;
 
-      const siblings = Array.from(dragContainerEl.children).filter(
-        (el) => el.hasAttribute('data-layout-id') && !el.classList.contains('hidden')
-      );
+      const siblings = Array.from(dragContainerEl.children).filter((el) => {
+        if (!el.hasAttribute('data-layout-id') || el.classList.contains('hidden')) return false;
+        const cs = window.getComputedStyle(el);
+        return cs && cs.display !== 'none';
+      });
       const curIdx = siblings.indexOf(dragItemEl);
       if (curIdx === -1) return;
 
-      // Magnetic upward swap
-      if (curIdx > 0) {
+      // Immediate Overlap Upward Swap: swap as soon as dragged item's top edge enters the item above!
+      if (curIdx > 0 && dy < -4) {
         const prevEl = siblings[curIdx - 1];
         const prevRect = prevEl.getBoundingClientRect();
-        const prevThreshold = prevRect.top + prevRect.height * 0.52;
-        if (draggedCenterY < prevThreshold) {
+        const overlapTriggerY = prevRect.bottom - Math.min(18, prevRect.height * 0.25);
+        if (draggedRect.top < overlapTriggerY) {
           const beforeTop = dragItemEl.getBoundingClientRect().top - dy;
           dragContainerEl.insertBefore(dragItemEl, prevEl);
           const afterTop = dragItemEl.getBoundingClientRect().top - dy;
@@ -10437,12 +10664,12 @@
         }
       }
 
-      // Magnetic downward swap
-      if (curIdx < siblings.length - 1) {
+      // Immediate Overlap Downward Swap: swap as soon as dragged item's bottom edge enters the item below!
+      if (curIdx < siblings.length - 1 && dy > 4) {
         const nextEl = siblings[curIdx + 1];
         const nextRect = nextEl.getBoundingClientRect();
-        const nextThreshold = nextRect.top + nextRect.height * 0.48;
-        if (draggedCenterY > nextThreshold) {
+        const overlapTriggerY = nextRect.top + Math.min(18, nextRect.height * 0.25);
+        if (draggedRect.bottom > overlapTriggerY) {
           const beforeTop = dragItemEl.getBoundingClientRect().top - dy;
           dragContainerEl.insertBefore(nextEl, dragItemEl);
           const afterTop = dragItemEl.getBoundingClientRect().top - dy;
@@ -10462,9 +10689,9 @@
         clearHoverTabSwitch();
         return;
       }
-      // If user released finger directly on a target page pill or bottom nav icon before the hover timer fired, move it immediately!
+      // If user released finger directly on a bottom nav icon before the hover timer fired, move it immediately!
       const dropHit = detectCrossPageTabTargetAtPoint(lastClientX, lastClientY);
-      if (dropHit && dropHit.tabId && dragContainerEl && dropHit.tabId !== dragContainerEl.id) {
+      if (dropHit && !dropHit.isEdge && dropHit.tabId && dragContainerEl && dropHit.tabId !== dragContainerEl.id) {
         moveDraggedItemToTabContainer(dropHit.tabId);
       }
       clearHoverTabSwitch();
@@ -10505,16 +10732,12 @@
         lastClientX = t.clientX;
         lastClientY = t.clientY;
 
-        // In layout edit mode, touching the 6-dot grip or anywhere on an item begins dragging immediately
+        // In layout edit mode, ONLY dragging from the top-left 6-dot rectangular grip initiates drag!
+        // Touching anywhere else on the card/page allows normal vertical scrolling.
         if (document.body.classList.contains('layout-edit-mode')) {
           if (target.closest('.layout-grip-dots')) {
             if (e.cancelable) e.preventDefault();
             beginMagneticDrag(itemEl, t.clientX, t.clientY);
-          } else {
-            clearLongPress();
-            longPressTimer = setTimeout(() => {
-              beginMagneticDrag(itemEl, lastClientX || t.clientX, lastClientY || t.clientY);
-            }, 90);
           }
           return;
         }
@@ -10534,7 +10757,6 @@
         clearLongPress();
         longPressTimer = setTimeout(() => {
           enterPageLayoutEditMode();
-          beginMagneticDrag(itemEl, lastClientX || t.clientX, lastClientY || t.clientY);
         }, 520);
       },
       { passive: false }
