@@ -1,11 +1,12 @@
 'use strict';
-// audio_control (pactl + playerctl) and system_control (power, lock, clipboard, stats, ...).
-// Return shapes follow HandleAudioControl() / HandleSystemControl() in BridgeHelper.cs.
+// audio_control (pactl / wpctl + playerctl) and system_control (power, lock, clipboard, stats, ...)
+// across X11 and Wayland desktops. Return shapes follow HandleAudioControl() / HandleSystemControl() in BridgeHelper.cs.
 
 const path = require('path').posix; // Linux paths, also when the tests run on Windows
 const {
   parsePactlVolume,
   parsePactlMute,
+  parseWpctlVolume,
   parsePactlSinkInputs,
   parsePactlSinks,
   PLAYERCTL_FORMAT,
@@ -17,7 +18,7 @@ const {
   parseMeminfo,
   parseUptime
 } = require('./parsers');
-const { execOk, sleep, clamp, num, missingToolMessage } = require('./util');
+const { execOk, getSession, sleep, clamp, num, missingToolMessage } = require('./util');
 
 const NOT_PLAYING = { active: false, isPlaying: false, title: 'Medya Oynatılmıyor', appName: 'Masaüstü Ses Sistemi', processName: '', pid: 0, icon: '', positionSec: 0, durationSec: 0 };
 
@@ -28,7 +29,10 @@ function createSystem(sys, desktop, input) {
     cpuPrev: null,
     clipHistory: [],
     lastClipText: '',
-    stickyPlayer: ''
+    stickyPlayer: '',
+    fallbackTrackKey: '',
+    fallbackPosSec: 0,
+    fallbackLastTs: 0
   };
   const dryRun = sys.env.TAHABLT_POWER_DRYRUN === '1';
 
@@ -60,6 +64,18 @@ function createSystem(sys, desktop, input) {
     return { command };
   }
 
+  function launchWaylandLocker() {
+    for (const locker of ['hyprlock', 'swaylock', 'gtklock', 'waylock', 'i3lock']) {
+      if (sys.has(locker)) {
+        try {
+          sys.spawnDetached(locker, locker === 'swaylock' ? ['-f'] : []);
+          return true;
+        } catch {}
+      }
+    }
+    return false;
+  }
+
   async function lockSession(lock) {
     const sid = sys.env.XDG_SESSION_ID;
     const argv = ['loginctl', lock ? 'lock-session' : 'unlock-session', ...(sid ? [sid] : [])];
@@ -67,9 +83,19 @@ function createSystem(sys, desktop, input) {
       await runPower(lock ? 'lock' : 'unlock', argv);
     } else if (sys.has('loginctl')) {
       const r = await sys.exec(argv[0], argv.slice(1), { timeout: 5000 });
-      // Outside a logind session (e.g. started by cron) fall back to the screensaver
-      if (r.code !== 0 && lock && sys.has('xdg-screensaver')) await sys.exec('xdg-screensaver', ['lock'], { timeout: 5000 }).catch(() => {});
-      else if (r.code !== 0) throw new Error('loginctl başarısız: ' + (r.stderr || '').trim());
+      // Outside a logind session or on standalone Wayland compositors without lock handler, fall back to locker binaries
+      if (r.code !== 0 && lock) {
+        if (!launchWaylandLocker() && sys.has('xdg-screensaver')) {
+          await sys.exec('xdg-screensaver', ['lock'], { timeout: 5000 }).catch(() => {});
+        }
+      } else if (r.code !== 0) {
+        throw new Error('loginctl başarısız: ' + (r.stderr || '').trim());
+      } else if (lock && getSession(sys).isWayland && ['hyprland', 'sway', 'wlroots'].includes(getSession(sys).compositor)) {
+        // On standalone wlroots compositors loginctl lock-session only emits a D-Bus signal; if no daemon listens, spawn locker
+        launchWaylandLocker();
+      }
+    } else if (lock && launchWaylandLocker()) {
+      // Locked via standalone locker
     } else if (lock && sys.has('xdg-screensaver')) {
       await sys.exec('xdg-screensaver', ['lock'], { timeout: 5000 });
     } else {
@@ -167,7 +193,7 @@ function createSystem(sys, desktop, input) {
   }
 
   // -------------------------------------------------------------------------
-  // Clipboard (xclip), history persisted like the Windows bridge
+  // Clipboard (wl-clipboard on Wayland, xclip / xsel on X11)
   // -------------------------------------------------------------------------
   const historyFile = path.join(
     sys.env.TAHABLT_DATA_DIR || path.join(sys.homedir(), '.local', 'share', 'bridge'),
@@ -206,26 +232,63 @@ function createSystem(sys, desktop, input) {
     saveHistory();
   }
 
+  function hasClipboardTool() {
+    return sys.has('wl-paste') || sys.has('xclip') || sys.has('xsel');
+  }
+
   async function readClipboard() {
-    if (!sys.has('xclip')) throw new Error(missingToolMessage('xclip'));
-    const r = await sys.exec('xclip', ['-selection', 'clipboard', '-o'], { timeout: 2000 }).catch(() => null);
-    return r && r.code === 0 ? r.stdout : '';
+    const sess = getSession(sys);
+    if (sess.isWayland && sys.has('wl-paste')) {
+      const r = await sys.exec('wl-paste', ['--no-newline'], { timeout: 2000 }).catch(() => null);
+      if (r && r.code === 0) return r.stdout;
+    }
+    if (sys.has('xclip')) {
+      const r = await sys.exec('xclip', ['-selection', 'clipboard', '-o'], { timeout: 2000 }).catch(() => null);
+      return r && r.code === 0 ? r.stdout : '';
+    }
+    if (sys.has('wl-paste')) {
+      const r = await sys.exec('wl-paste', ['--no-newline'], { timeout: 2000 }).catch(() => null);
+      return r && r.code === 0 ? r.stdout : '';
+    }
+    if (sys.has('xsel')) {
+      const r = await sys.exec('xsel', ['--clipboard', '--output'], { timeout: 2000 }).catch(() => null);
+      return r && r.code === 0 ? r.stdout : '';
+    }
+    throw new Error(missingToolMessage(sess.isWayland ? 'wl-paste' : 'xclip'));
   }
 
   async function pollClipboard() {
-    if (!sys.has('xclip')) return;
+    if (!hasClipboardTool()) return;
     const t = (await readClipboard().catch(() => '')).trim();
     if (t && t !== st.lastClipText && t.length < 100000) addHistory(t);
   }
 
   async function writeClipboard(data, mime) {
-    if (!sys.has('xclip')) throw new Error(missingToolMessage('xclip'));
-    const args = ['-selection', 'clipboard', ...(mime ? ['-t', mime] : []), '-i'];
-    await sys.exec('xclip', args, { input: data, waitExit: true, ignoreOutput: true, timeout: 3000 });
+    const sess = getSession(sys);
+    if (sess.isWayland && sys.has('wl-copy')) {
+      const wArgs = mime ? ['--type', mime] : [];
+      const r = await sys.exec('wl-copy', wArgs, { input: data, waitExit: true, ignoreOutput: true, timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0) return;
+    }
+    if (sys.has('xclip')) {
+      const args = ['-selection', 'clipboard', ...(mime ? ['-t', mime] : []), '-i'];
+      await sys.exec('xclip', args, { input: data, waitExit: true, ignoreOutput: true, timeout: 3000 });
+      return;
+    }
+    if (sys.has('wl-copy')) {
+      const wArgs = mime ? ['--type', mime] : [];
+      await sys.exec('wl-copy', wArgs, { input: data, waitExit: true, ignoreOutput: true, timeout: 3000 });
+      return;
+    }
+    if (sys.has('xsel')) {
+      await sys.exec('xsel', ['--clipboard', '--input'], { input: data, waitExit: true, ignoreOutput: true, timeout: 3000 });
+      return;
+    }
+    throw new Error(missingToolMessage(sess.isWayland ? 'wl-copy' : 'xclip'));
   }
 
   // -------------------------------------------------------------------------
-  // Audio
+  // Audio (pactl + PipeWire wpctl fallback + playerctl)
   // -------------------------------------------------------------------------
   async function pactl(args) {
     if (!sys.has('pactl')) throw new Error(missingToolMessage('pactl'));
@@ -233,18 +296,30 @@ function createSystem(sys, desktop, input) {
   }
 
   async function masterState() {
-    const [v, m] = await Promise.all([pactl(['get-sink-volume', '@DEFAULT_SINK@']), pactl(['get-sink-mute', '@DEFAULT_SINK@'])]);
-    if (v.code === 0 && m.code === 0) return { volume: parsePactlVolume(v.stdout) ?? 0, muted: Boolean(parsePactlMute(m.stdout)) };
-    // pactl < 14: no get-sink-* subcommands
-    const info = await pactl(['info']);
-    const def = (/Default Sink:\s*(\S+)/.exec(info.stdout) || [])[1] || '';
-    const sinks = await pactl(['list', 'sinks']);
-    const s = parsePactlSinks(sinks.stdout, def);
-    if (!s) throw new Error('Ses çıkışı bulunamadı (PulseAudio/PipeWire çalışıyor mu?)');
-    return { volume: s.volume ?? 0, muted: s.muted };
+    if (sys.has('pactl')) {
+      const [v, m] = await Promise.all([pactl(['get-sink-volume', '@DEFAULT_SINK@']), pactl(['get-sink-mute', '@DEFAULT_SINK@'])]);
+      if (v.code === 0 && m.code === 0) return { volume: parsePactlVolume(v.stdout) ?? 0, muted: Boolean(parsePactlMute(m.stdout)) };
+      // pactl < 14: no get-sink-* subcommands
+      const info = await pactl(['info']);
+      const def = (/Default Sink:\s*(\S+)/.exec(info.stdout) || [])[1] || '';
+      const sinks = await pactl(['list', 'sinks']);
+      const s = parsePactlSinks(sinks.stdout, def);
+      if (s) return { volume: s.volume ?? 0, muted: s.muted };
+    }
+    // PipeWire WirePlumber native CLI fallback
+    if (sys.has('wpctl')) {
+      const r = await sys.exec('wpctl', ['get-volume', '@DEFAULT_AUDIO_SINK@'], { timeout: 2500 }).catch(() => null);
+      if (r && r.code === 0) {
+        const parsed = parseWpctlVolume(r.stdout);
+        if (parsed) return parsed;
+      }
+    }
+    if (!sys.has('pactl')) throw new Error(missingToolMessage('pactl'));
+    throw new Error('Ses çıkışı bulunamadı (PulseAudio/PipeWire çalışıyor mu?)');
   }
 
   async function sinkInputs() {
+    if (!sys.has('pactl')) return [];
     const r = await pactl(['list', 'sink-inputs']);
     const list = r.code === 0 ? parsePactlSinkInputs(r.stdout) : [];
     for (const s of list) s.icon = desktop.iconForProcess(s.rawProcessName) || '';
@@ -318,17 +393,25 @@ function createSystem(sys, desktop, input) {
   }
 
   async function micState() {
-    if (!sys.has('pactl')) return { volume: 100, muted: false, hasMic: false };
-    const [v, m] = await Promise.all([
-      pactl(['get-source-volume', '@DEFAULT_SOURCE@']).catch(() => ({ code: 1, stdout: '' })),
-      pactl(['get-source-mute', '@DEFAULT_SOURCE@']).catch(() => ({ code: 1, stdout: '' }))
-    ]);
-    if (v.code === 0 && m.code === 0 && v.stdout) {
-      return {
-        volume: parsePactlVolume(v.stdout) ?? 100,
-        muted: Boolean(parsePactlMute(m.stdout)),
-        hasMic: true
-      };
+    if (sys.has('pactl')) {
+      const [v, m] = await Promise.all([
+        pactl(['get-source-volume', '@DEFAULT_SOURCE@']).catch(() => ({ code: 1, stdout: '' })),
+        pactl(['get-source-mute', '@DEFAULT_SOURCE@']).catch(() => ({ code: 1, stdout: '' }))
+      ]);
+      if (v.code === 0 && m.code === 0 && v.stdout) {
+        return {
+          volume: parsePactlVolume(v.stdout) ?? 100,
+          muted: Boolean(parsePactlMute(m.stdout)),
+          hasMic: true
+        };
+      }
+    }
+    if (sys.has('wpctl')) {
+      const r = await sys.exec('wpctl', ['get-volume', '@DEFAULT_AUDIO_SOURCE@'], { timeout: 2000 }).catch(() => null);
+      if (r && r.code === 0) {
+        const parsed = parseWpctlVolume(r.stdout);
+        if (parsed) return { volume: parsed.volume, muted: parsed.muted, hasMic: true };
+      }
     }
     return { volume: 100, muted: false, hasMic: false };
   }
@@ -379,6 +462,34 @@ function createSystem(sys, desktop, input) {
         durationSec: pick.durationSec
       };
     }
+    // Continuous elapsed time tracking for live streams or players that report 0 position/duration
+    if (nowPlaying.active) {
+      const trackKey = `${nowPlaying.processName}|${nowPlaying.title}`;
+      const nowMs = sys.now();
+      if (nowPlaying.durationSec > 0 && nowPlaying.positionSec > 0) {
+        st.fallbackTrackKey = trackKey;
+        st.fallbackPosSec = nowPlaying.positionSec;
+        st.fallbackLastTs = nowMs;
+      } else {
+        if (st.fallbackTrackKey !== trackKey) {
+          st.fallbackTrackKey = trackKey;
+          st.fallbackPosSec = nowPlaying.positionSec > 0 ? nowPlaying.positionSec : 0;
+          st.fallbackLastTs = nowMs;
+        } else if (nowPlaying.isPlaying && st.fallbackLastTs > 0) {
+          const dt = Math.max(0, (nowMs - st.fallbackLastTs) / 1000);
+          if (dt < 60) st.fallbackPosSec += dt;
+          if (nowPlaying.durationSec > 0 && st.fallbackPosSec > nowPlaying.durationSec) {
+            st.fallbackPosSec = nowPlaying.durationSec;
+          }
+          st.fallbackLastTs = nowMs;
+        } else {
+          st.fallbackLastTs = nowMs;
+        }
+        if (nowPlaying.positionSec <= 0 && st.fallbackPosSec > 0) {
+          nowPlaying.positionSec = Math.round(st.fallbackPosSec * 10) / 10;
+        }
+      }
+    }
     return {
       masterVolume: master.volume,
       masterMuted: master.muted,
@@ -415,10 +526,24 @@ function createSystem(sys, desktop, input) {
         } else if (action === 'set_mic_mute') {
           await pactl(['set-source-mute', '@DEFAULT_SOURCE@', 'toggle']).catch(() => {});
         }
+      } else if (sys.has('wpctl')) {
+        if (args.volume !== undefined) {
+          await sys.exec('wpctl', ['set-volume', '@DEFAULT_AUDIO_SOURCE@', clamp(Math.round(num(args.volume, 100)), 0, 100) + '%'], { timeout: 2500 }).catch(() => {});
+        }
+        if (args.muted !== undefined) {
+          await sys.exec('wpctl', ['set-mute', '@DEFAULT_AUDIO_SOURCE@', args.muted ? '1' : '0'], { timeout: 2500 }).catch(() => {});
+        } else if (action === 'set_mic_mute') {
+          await sys.exec('wpctl', ['set-mute', '@DEFAULT_AUDIO_SOURCE@', 'toggle'], { timeout: 2500 }).catch(() => {});
+        }
       }
     } else if (action === 'set_master') {
-      if (args.volume !== undefined) await execOk(sys, 'pactl', ['set-sink-volume', '@DEFAULT_SINK@', clamp(Math.round(num(args.volume, 50)), 0, 100) + '%'], { timeout: 3000 });
-      if (args.muted !== undefined) await execOk(sys, 'pactl', ['set-sink-mute', '@DEFAULT_SINK@', args.muted ? '1' : '0'], { timeout: 3000 });
+      if (sys.has('pactl')) {
+        if (args.volume !== undefined) await execOk(sys, 'pactl', ['set-sink-volume', '@DEFAULT_SINK@', clamp(Math.round(num(args.volume, 50)), 0, 100) + '%'], { timeout: 3000 });
+        if (args.muted !== undefined) await execOk(sys, 'pactl', ['set-sink-mute', '@DEFAULT_SINK@', args.muted ? '1' : '0'], { timeout: 3000 });
+      } else if (sys.has('wpctl')) {
+        if (args.volume !== undefined) await execOk(sys, 'wpctl', ['set-volume', '@DEFAULT_AUDIO_SINK@', clamp(Math.round(num(args.volume, 50)), 0, 100) + '%'], { timeout: 3000 });
+        if (args.muted !== undefined) await execOk(sys, 'wpctl', ['set-mute', '@DEFAULT_AUDIO_SINK@', args.muted ? '1' : '0'], { timeout: 3000 });
+      }
     } else if (action === 'set_app') {
       const pid = num(args.pid, 0);
       const proc = String(args.processName || '').toLowerCase();
@@ -589,11 +714,12 @@ function createSystem(sys, desktop, input) {
       networks
     };
   }
+
   function openTaskManager() {
     for (const app of ['gnome-system-monitor', 'plasma-systemmonitor', 'ksysguard', 'mate-system-monitor', 'xfce4-taskmanager', 'lxtask']) {
       if (sys.has(app)) return sys.spawnDetached(app, []);
     }
-    for (const term of ['x-terminal-emulator', 'gnome-terminal', 'konsole', 'xfce4-terminal', 'xterm']) {
+    for (const term of ['x-terminal-emulator', 'gnome-terminal', 'konsole', 'xfce4-terminal', 'kitty', 'alacritty', 'foot', 'wezterm', 'xterm']) {
       if (sys.has(term)) return sys.spawnDetached(term, term === 'gnome-terminal' ? ['--', 'top'] : ['-e', 'top']);
     }
     throw new Error('Görev yöneticisi bulunamadı (gnome-system-monitor veya xterm kurun)');
@@ -694,7 +820,7 @@ function createSystem(sys, desktop, input) {
   loadHistory();
   let clipTimer = null;
   function startClipboardWatch() {
-    if (clipTimer || !sys.has('xclip')) return;
+    if (clipTimer || !hasClipboardTool()) return;
     clipTimer = setInterval(() => pollClipboard().catch(() => {}), 2000);
     if (clipTimer.unref) clipTimer.unref();
   }

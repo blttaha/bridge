@@ -1,16 +1,13 @@
 'use strict';
-// Remote desktop for X11: the TBR3/TBF2 stream port (wire format: native/ScreenStreamer.cs) fed by an
-// ffmpeg x11grab -> H.264 pipeline, a JPEG fallback for phones without WebCodecs, and capture_screen.
-//
-// Differences to the Windows engine, all allowed by the protocol:
-//  * the cursor is drawn into the picture (-draw_mouse 1), so CURSOR_VISIBLE is never set
-//  * H.264 only (AV1 requests fall back, flag 0x200 never set)
-//  * no dirty-rect / top-off pass: every video frame carries one rect covering the canvas
+// Remote desktop for Linux (X11 & Wayland): the TBR3/TBF2 stream port (wire format: native/ScreenStreamer.cs)
+// fed by an ffmpeg x11grab / wf-recorder -> H.264 pipeline, a JPEG fallback (grim / spectacle / gnome-screenshot /
+// ffmpeg x11grab), and capture_screen.
 
 const net = require('net');
 const crypto = require('crypto');
+const path = require('path').posix;
 const { gateSocket, parseStreamRequest, buildFrame, AnnexBSplitter, FLAGS, REQ_SIZE } = require('./protocol');
-const { clamp, missingToolMessage } = require('./util');
+const { getSession, clamp, missingToolMessage } = require('./util');
 
 const MAX_QUEUE = 6;
 
@@ -84,6 +81,27 @@ function buildVideoArgs(cfg) {
   ];
 }
 
+// wf-recorder argv for native Wayland live H.264 streaming (Sway, Hyprland, wlroots)
+function buildWfRecorderArgs(cfg) {
+  const { mon, fps, videoW, videoH, vaapi } = cfg;
+  const args = [];
+  if (mon.deviceName && mon.deviceName !== 'ALL_MONITORS' && mon.deviceName !== 'default') {
+    args.push('-o', mon.deviceName);
+  } else {
+    args.push('-g', `${mon.x},${mon.y} ${mon.width}x${mon.height}`);
+  }
+  args.push('-r', String(fps), '-m', 'h264', '--file=pipe:1');
+  if (vaapi) {
+    args.push('-c', 'h264_vaapi', '-d', '/dev/dri/renderD128', '-F', `scale_vaapi=w=${videoW}:h=${videoH}:format=nv12`);
+  } else {
+    args.push('-c', 'libx264', '-p', 'preset=ultrafast', '-p', 'tune=zerolatency', '-x', 'yuv420p');
+    if (videoW !== (mon.width & ~1) || videoH !== (mon.height & ~1)) {
+      args.push('-F', `scale=${videoW}:${videoH}:flags=fast_bilinear`);
+    }
+  }
+  return args;
+}
+
 // Quality 0..100 -> mjpeg qscale 31..2
 function jpegQscale(quality) {
   return String(clamp(Math.round(2 + ((100 - clamp(quality, 0, 100)) * 29) / 100), 2, 31));
@@ -117,10 +135,96 @@ function buildJpegArgs(display, mon, outW, outH, quality, drawMouse = true) {
   ];
 }
 
+async function scaleImageBufferWithFfmpeg(sys, inputBuf, outW, outH, quality) {
+  if (!sys.has('ffmpeg')) return inputBuf;
+  const r = await sys
+    .exec(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        'pipe:0',
+        '-frames:v',
+        '1',
+        '-vf',
+        `scale=${outW}:${outH}`,
+        '-pix_fmt',
+        'yuvj420p',
+        '-q:v',
+        jpegQscale(quality),
+        '-f',
+        'mjpeg',
+        'pipe:1'
+      ],
+      { input: inputBuf, timeout: 5000 }
+    )
+    .catch(() => null);
+  if (r && r.code === 0 && r.stdoutBuf.length >= 4 && r.stdoutBuf[0] === 0xff && r.stdoutBuf[1] === 0xd8) {
+    return r.stdoutBuf;
+  }
+  return inputBuf;
+}
+
+async function grabWaylandJpeg(sys, mon, outW, outH, quality, drawMouse = true) {
+  const q = clamp(Math.round(Number(quality) || 80), 10, 100);
+  // 1. grim (Sway, Hyprland, wlroots, Cosmic, River, Wayfire, Labwc)
+  if (sys.has('grim')) {
+    const gArgs = [
+      ...(drawMouse ? ['-c'] : []),
+      '-t',
+      'jpeg',
+      '-q',
+      String(q),
+      '-g',
+      `${mon.x},${mon.y} ${mon.width}x${mon.height}`,
+      '-'
+    ];
+    const r = await sys.exec('grim', gArgs, { timeout: 5000 }).catch(() => null);
+    if (r && r.code === 0 && r.stdoutBuf.length >= 4 && r.stdoutBuf[0] === 0xff && r.stdoutBuf[1] === 0xd8) {
+      if (outW === mon.width && outH === mon.height) return r.stdoutBuf;
+      return scaleImageBufferWithFfmpeg(sys, r.stdoutBuf, outW, outH, q);
+    }
+  }
+  // 2. KDE Plasma Wayland (spectacle) + GNOME Wayland (gnome-screenshot)
+  const tmpFile = path.join(sys.env.XDG_RUNTIME_DIR || '/tmp', `bridge-cap-${process.pid}.jpg`);
+  if (sys.has('spectacle')) {
+    const r = await sys.exec('spectacle', ['-b', '-n', ...(drawMouse ? ['-p'] : []), '-o', tmpFile], { timeout: 5000 }).catch(() => null);
+    if (r && r.code === 0) {
+      try {
+        const raw = sys.fs.readFileSync(tmpFile);
+        try { sys.fs.unlinkSync(tmpFile); } catch {}
+        if (raw && raw.length > 4) return scaleImageBufferWithFfmpeg(sys, raw, outW, outH, q);
+      } catch {}
+    }
+  }
+  if (sys.has('gnome-screenshot')) {
+    const r = await sys.exec('gnome-screenshot', [...(drawMouse ? ['-p'] : []), '-f', tmpFile], { timeout: 5000 }).catch(() => null);
+    if (r && r.code === 0) {
+      try {
+        const raw = sys.fs.readFileSync(tmpFile);
+        try { sys.fs.unlinkSync(tmpFile); } catch {}
+        if (raw && raw.length > 4) return scaleImageBufferWithFfmpeg(sys, raw, outW, outH, q);
+      } catch {}
+    }
+  }
+  return null;
+}
+
 async function grabJpeg(sys, mon, outW, outH, quality, drawMouse) {
+  const sess = getSession(sys);
+  if (sess.isWayland && (sys.has('grim') || sys.has('spectacle') || sys.has('gnome-screenshot'))) {
+    const wlBuf = await grabWaylandJpeg(sys, mon, outW, outH, quality, drawMouse);
+    if (wlBuf) return wlBuf;
+  }
   if (!sys.has('ffmpeg')) throw new Error(missingToolMessage('ffmpeg'));
   const r = await sys.exec('ffmpeg', buildJpegArgs(sys.display, mon, outW, outH, quality, drawMouse), { timeout: 6000 });
   if (r.code !== 0 || r.stdoutBuf.length < 4 || r.stdoutBuf[0] !== 0xff || r.stdoutBuf[1] !== 0xd8) {
+    if (sess.isWayland) {
+      const wlBuf = await grabWaylandJpeg(sys, mon, outW, outH, quality, drawMouse);
+      if (wlBuf) return wlBuf;
+    }
     throw new Error('Ekran yakalanamadı (ffmpeg x11grab): ' + (r.stderr || '').trim().split('\n').pop());
   }
   return r.stdoutBuf;
@@ -152,7 +256,7 @@ async function captureScreen(sys, getMonitorBounds, getCursor, args) {
 }
 
 // ---------------------------------------------------------------------------
-// One phone stream = one session = (at most) one ffmpeg encoder
+// One phone stream = one session = (at most) one video encoder
 // ---------------------------------------------------------------------------
 class StreamSession {
   constructor(sys, deps) {
@@ -160,12 +264,14 @@ class StreamSession {
     this.deps = deps; // { getMonitorBounds(idx), getCursor() }
     this.frameId = 0;
     this.closed = false;
-    this.enc = null; // { proc, key, kbps, startedAt, vaapi }
+    this.enc = null; // { proc, key, kbps, startedAt, vaapi, bin }
     this.queue = [];
     this.waiter = null;
     this.awaitIdr = false;
     this.lastIdrTs = 0;
     this.vaapiFailed = !sys.fs.existsSync('/dev/dri/renderD128') || sys.env.TAHABLT_NO_VAAPI === '1';
+    this.wfRecorderFailed = false;
+    this.videoCaptureFailed = false;
     this.restartTimes = [];
     this.lastJpegHash = '';
     this.cursor = null;
@@ -198,18 +304,24 @@ class StreamSession {
     };
   }
 
+  _hasWaylandStillTool() {
+    const sess = getSession(this.sys);
+    return sess.isWayland && (this.sys.has('grim') || this.sys.has('spectacle') || this.sys.has('gnome-screenshot'));
+  }
+
   async handle(req) {
     if (this.failed) throw this.failed;
     this._startCursorPoll();
     const t0 = this.sys.now();
     const mon = await this.deps.getMonitorBounds(req.monitorIndex);
     const g = computeGeometry(mon, req);
-    if (!req.allowVideo) return this._jpegFrame(req, mon, g, t0);
+    if (!req.allowVideo || this.videoCaptureFailed) return this._jpegFrame(req, mon, g, t0);
 
     this._ensureEncoder(req, mon, g);
     if (req.mode === 2 || this.queue.length > MAX_QUEUE) this._dropUntilIdr();
     const wait = req.mode === 2 ? Math.max(req.waitMs, 1500) : Math.min(req.waitMs, 2000);
     const au = await this._nextAu(wait);
+    if (this.videoCaptureFailed) return this._jpegFrame(req, mon, g, t0);
     const { cx, cy } = this._cursorNorm(mon);
     const base = { canvasW: g.videoW, canvasH: g.videoH, srcW: mon.width, srcH: mon.height, cursorX: cx, cursorY: cy, workMs: this.sys.now() - t0 };
     if (!au) return buildFrame({ ...base, frameId: ++this.frameId, flags: FLAGS.IDLE, rects: [] });
@@ -223,7 +335,13 @@ class StreamSession {
   }
 
   _ensureEncoder(req, mon, g) {
-    if (!this.sys.has('ffmpeg')) {
+    const sess = getSession(this.sys);
+    const canWf = sess.isWayland && this.sys.has('wf-recorder') && !this.wfRecorderFailed;
+    if (!canWf && !this.sys.has('ffmpeg')) {
+      if (this._hasWaylandStillTool()) {
+        this.videoCaptureFailed = true;
+        return;
+      }
       this.failed = new Error(missingToolMessage('ffmpeg'));
       throw this.failed;
     }
@@ -239,10 +357,13 @@ class StreamSession {
 
   _startEncoder(cfg) {
     this._stopEncoder();
+    const sess = getSession(this.sys);
+    const useWf = sess.isWayland && this.sys.has('wf-recorder') && !this.wfRecorderFailed;
     const vaapi = !this.vaapiFailed;
-    const args = buildVideoArgs({ display: this.sys.display, ...cfg, vaapi });
-    const proc = this.sys.spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    const enc = { proc, key: cfg.key, kbps: cfg.kbps, startedAt: this.sys.now(), vaapi, cfg, gotAu: false, stderr: '' };
+    const bin = useWf ? 'wf-recorder' : 'ffmpeg';
+    const args = useWf ? buildWfRecorderArgs({ ...cfg, vaapi }) : buildVideoArgs({ display: this.sys.display, ...cfg, vaapi });
+    const proc = this.sys.spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const enc = { proc, bin, useWf, key: cfg.key, kbps: cfg.kbps, startedAt: this.sys.now(), vaapi, cfg, gotAu: false, stderr: '' };
     this.enc = enc;
     this.queue = [];
     this.awaitIdr = true; // a fresh encoder starts with an IDR; anything else is useless to the decoder
@@ -250,7 +371,6 @@ class StreamSession {
     const splitter = new AnnexBSplitter((au) => this._onAu(enc, au));
     proc.stdout.on('data', (chunk) => {
       splitter.push(chunk);
-      // ffmpeg writes one packet per frame (-flush_packets 1): a quiet pipe means the AU is complete
       if (flushTimer) clearTimeout(flushTimer);
       flushTimer = setTimeout(() => splitter.flush(), 4);
     });
@@ -266,20 +386,28 @@ class StreamSession {
       if (enc.vaapi && !enc.gotAu) {
         this.vaapiFailed = true; // no usable VA-API encoder: libx264 for the rest of the session
         this.sys.log('h264_vaapi kullanılamadı, libx264 kullanılıyor:', msg);
+      } else if (enc.useWf && !enc.gotAu) {
+        this.wfRecorderFailed = true;
+        this.sys.log('wf-recorder kullanılamadı, alternatif yakalamaya geçiliyor:', msg);
       } else {
-        this.sys.log('ffmpeg durdu:', msg);
+        this.sys.log(`${enc.bin} durdu:`, msg);
       }
       const now = this.sys.now();
       this.restartTimes = this.restartTimes.filter((t) => now - t < 10000);
       this.restartTimes.push(now);
       if (this.restartTimes.length > 5) {
+        if (this._hasWaylandStillTool()) {
+          this.videoCaptureFailed = true;
+          if (this.waiter) this.waiter(null);
+          return;
+        }
         this.failed = new Error('ffmpeg tekrar tekrar kapandı: ' + msg);
         if (this.waiter) this.waiter(null);
         return;
       }
       setTimeout(() => {
-        if (!this.closed && !this.enc) this._startEncoder(enc.cfg);
-      }, enc.vaapi && !enc.gotAu ? 0 : 400);
+        if (!this.closed && !this.enc && !this.videoCaptureFailed) this._startEncoder(enc.cfg);
+      }, (enc.vaapi || enc.useWf) && !enc.gotAu ? 0 : 400);
     });
   }
 
@@ -338,7 +466,7 @@ class StreamSession {
     });
   }
 
-  // JPEG fallback: one full-canvas JPEG per changed screen (an ffmpeg run per frame, slow but simple)
+  // JPEG fallback: one full-canvas JPEG per changed screen
   async _jpegFrame(req, mon, g, t0) {
     this._stopEncoder();
     const scale = req.motionScale > 0 && req.motionScale < 1000 && req.mode !== 1 ? req.motionScale / 1000 : 1;
@@ -419,6 +547,7 @@ function startStreamServer(sys, { port, key, deps, onListening }) {
 module.exports = {
   computeGeometry,
   buildVideoArgs,
+  buildWfRecorderArgs,
   buildJpegArgs,
   jpegQscale,
   grabJpeg,

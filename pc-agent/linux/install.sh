@@ -31,6 +31,9 @@ if [[ "${1:-}" == "--uninstall" ]]; then
 fi
 
 need=(node xdotool wmctrl xrandr xset xclip pactl playerctl ffmpeg)
+if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+  need+=(wl-copy ydotool wtype grim)
+fi
 missing=()
 for tool in "${need[@]}"; do command -v "$tool" >/dev/null 2>&1 || missing+=("$tool"); done
 
@@ -38,15 +41,31 @@ if ((${#missing[@]})); then
   echo "Eksik araçlar kuruluyor: ${missing[*]}"
   if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update -y || true
-    sudo apt-get install -y nodejs xdotool wmctrl x11-xserver-utils xclip pulseaudio-utils playerctl ffmpeg libnotify-bin ethtool curl xz-utils || true
+    sudo apt-get install -y nodejs xdotool wmctrl x11-xserver-utils x11-utils xclip pulseaudio-utils playerctl ffmpeg brightnessctl libnotify-bin ethtool curl xz-utils || true
+    sudo apt-get install -y wl-clipboard ydotool wtype grim slurp wlr-randr wf-recorder gnome-screenshot ddcutil 2>/dev/null || true
   elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install -y nodejs xdotool wmctrl xrandr xset xclip pulseaudio-utils playerctl ffmpeg libnotify ethtool curl xz || true
+    sudo dnf install -y nodejs xdotool wmctrl xrandr xset xprop xclip pulseaudio-utils playerctl ffmpeg brightnessctl libnotify ethtool curl xz || true
+    sudo dnf install -y wl-clipboard ydotool wtype grim slurp wlr-randr wf-recorder ddcutil 2>/dev/null || true
   elif command -v pacman >/dev/null 2>&1; then
-    sudo pacman -Sy --needed --noconfirm nodejs xdotool wmctrl xorg-xrandr xorg-xset xclip libpulse playerctl ffmpeg libnotify ethtool curl xz || true
+    sudo pacman -Sy --needed --noconfirm nodejs xdotool wmctrl xorg-xrandr xorg-xset xorg-xprop xclip libpulse playerctl ffmpeg brightnessctl libnotify ethtool curl xz || true
+    sudo pacman -Sy --needed --noconfirm wl-clipboard ydotool wtype grim slurp wlr-randr wf-recorder ddcutil 2>/dev/null || true
   elif command -v zypper >/dev/null 2>&1; then
-    sudo zypper --non-interactive install nodejs xdotool wmctrl xrandr xset xclip pulseaudio-utils playerctl ffmpeg libnotify-tools ethtool curl xz || true
+    sudo zypper --non-interactive install nodejs xdotool wmctrl xrandr xset xprop xclip pulseaudio-utils playerctl ffmpeg brightnessctl libnotify-tools ethtool curl xz || true
+    sudo zypper --non-interactive install wl-clipboard ydotool wtype grim slurp wlr-randr wf-recorder ddcutil 2>/dev/null || true
+  elif command -v apk >/dev/null 2>&1; then
+    sudo apk add --no-cache nodejs npm xdotool wmctrl xrandr xset xprop xclip pulseaudio-utils playerctl ffmpeg brightnessctl libnotify ethtool curl xz wl-clipboard grim slurp wtype ydotool 2>/dev/null || true
   else
     echo "Uyarı: Paket yöneticisi otomatik tanınmadı; eksik araçları (${missing[*]}) paket yöneticinizle kurabilirsiniz." >&2
+  fi
+fi
+
+# Grant user access to /dev/uinput so Wayland input tools (ydotool / dotool) work without root prompts
+if [[ -e /dev/uinput ]] && [[ -n "${USER:-}" ]]; then
+  sudo usermod -aG input "${USER}" 2>/dev/null || true
+  if [[ -d /etc/udev/rules.d ]]; then
+    echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/80-bridge-uinput.rules >/dev/null 2>&1 || true
+    sudo udevadm control --reload-rules 2>/dev/null || true
+    sudo udevadm trigger /dev/uinput 2>/dev/null || true
   fi
 fi
 
@@ -113,8 +132,8 @@ if [[ -z "${NODE_BIN}" ]]; then
   fi
 fi
 
-if [[ "${XDG_SESSION_TYPE:-x11}" == "wayland" ]]; then
-  echo "Not: Wayland oturumu algılandı. Tam ekran yakalama ve pencere yönetimi için giriş ekranında 'X11 / Xorg' oturumu önerilir."
+if [[ "${XDG_SESSION_TYPE:-x11}" == "wayland" ]] || [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+  echo "Bilgi: Wayland oturumu algılandı (${XDG_CURRENT_DESKTOP:-Wayland}). Wayland ve X11 uyumluluk katmanı etkinleştirildi."
 fi
 
 # Cloudflare tunnel for mobile data (optional; LAN works without it)
@@ -188,8 +207,8 @@ done
 
 sed -e "s|@APP_DIR@|${APP_DIR}|g" -e "s|@NODE_BIN@|${NODE_BIN}|g" "${APP_DIR}/linux/bridge-agent.service" > "${UNIT_DIR}/bridge-agent.service"
 systemctl --user daemon-reload || true
-# Not every desktop exports the display to the user manager; the bridge cannot capture without it
-systemctl --user import-environment DISPLAY XAUTHORITY XDG_SESSION_TYPE DBUS_SESSION_BUS_ADDRESS 2>/dev/null || true
+# Not every desktop exports the display to the user manager; import both X11 and Wayland/compositor variables
+systemctl --user import-environment DISPLAY WAYLAND_DISPLAY XAUTHORITY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DESKTOP_SESSION HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK I3SOCK DBUS_SESSION_BUS_ADDRESS 2>/dev/null || true
 systemctl --user enable --now bridge-agent.service || true
 
 # Enable systemd user linger so the service starts at boot even before login

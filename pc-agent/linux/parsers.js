@@ -1,5 +1,5 @@
 'use strict';
-// Pure text parsers for the output of the Linux tools. No I/O here, so every function is unit tested.
+// Pure text parsers for the output of the Linux tools (X11 + Wayland compositors). No I/O here, so every function is unit tested.
 
 // ---------------------------------------------------------------------------
 // xrandr --query
@@ -36,6 +36,10 @@ function parseXrandr(text) {
   if (outputs.length === 0 && screen) {
     outputs.push({ name: 'default', isPrimary: true, x: 0, y: 0, width: screen.width, height: screen.height, virtual: true });
   }
+  return sortMonitorOutputs(outputs, inactive, screen);
+}
+
+function sortMonitorOutputs(outputs, inactive = [], screen = null) {
   if (outputs.length > 0 && !outputs.some((o) => o.isPrimary)) {
     const first = outputs.slice().sort((a, b) => a.x - b.x || a.y - b.y)[0];
     first.isPrimary = true;
@@ -47,6 +51,214 @@ function parseXrandr(text) {
   return { outputs, inactive, screen };
 }
 
+// ---------------------------------------------------------------------------
+// Wayland monitor parsers: Hyprland, Sway/i3, KDE kscreen-doctor, wlr-randr
+// ---------------------------------------------------------------------------
+function parseHyprMonitors(jsonText) {
+  let list = [];
+  try {
+    list = JSON.parse(String(jsonText || '[]'));
+  } catch {
+    return { outputs: [], inactive: [], screen: null };
+  }
+  if (!Array.isArray(list)) return { outputs: [], inactive: [], screen: null };
+  const outputs = [];
+  const inactive = [];
+  for (const m of list) {
+    if (!m || !m.name) continue;
+    if (m.disabled) {
+      inactive.push(m.name);
+      continue;
+    }
+    const scale = Number(m.scale) > 0 ? Number(m.scale) : 1;
+    const rawW = Number(m.width) || 1920;
+    const rawH = Number(m.height) || 1080;
+    const transform = Number(m.transform) || 0;
+    const rotated = transform % 2 === 1;
+    const w = Math.round((rotated ? rawH : rawW) / scale);
+    const h = Math.round((rotated ? rawW : rawH) / scale);
+    const x = Number(m.x) || 0;
+    const y = Number(m.y) || 0;
+    const res = Array.isArray(m.reserved) ? m.reserved : [0, 0, 0, 0]; // [left, top, right, bottom]
+    outputs.push({
+      name: String(m.name),
+      isPrimary: Boolean(m.focused) || m.id === 0,
+      x,
+      y,
+      width: w,
+      height: h,
+      workX: x + (Number(res[0]) || 0),
+      workY: y + (Number(res[1]) || 0),
+      workWidth: Math.max(200, w - (Number(res[0]) || 0) - (Number(res[2]) || 0)),
+      workHeight: Math.max(200, h - (Number(res[1]) || 0) - (Number(res[3]) || 0))
+    });
+  }
+  return sortMonitorOutputs(outputs, inactive);
+}
+
+function parseSwayOutputs(jsonText) {
+  let list = [];
+  try {
+    list = JSON.parse(String(jsonText || '[]'));
+  } catch {
+    return { outputs: [], inactive: [], screen: null };
+  }
+  if (!Array.isArray(list)) return { outputs: [], inactive: [], screen: null };
+  const outputs = [];
+  const inactive = [];
+  for (const o of list) {
+    if (!o || !o.name) continue;
+    if (o.active === false) {
+      inactive.push(o.name);
+      continue;
+    }
+    const rect = o.rect || {};
+    outputs.push({
+      name: String(o.name),
+      isPrimary: Boolean(o.primary || o.focused),
+      x: Number(rect.x) || 0,
+      y: Number(rect.y) || 0,
+      width: Number(rect.width) || 1920,
+      height: Number(rect.height) || 1080
+    });
+  }
+  return sortMonitorOutputs(outputs, inactive);
+}
+
+function parseKscreenMonitors(text) {
+  const raw = String(text || '').trim();
+  const outputs = [];
+  const inactive = [];
+  if (raw.startsWith('{')) {
+    try {
+      const obj = JSON.parse(raw);
+      const list = Array.isArray(obj.outputs) ? obj.outputs : [];
+      for (const o of list) {
+        if (!o || !o.name) continue;
+        if (o.connected === false) continue;
+        if (o.enabled === false) {
+          inactive.push(String(o.name));
+          continue;
+        }
+        const pos = o.pos || { x: 0, y: 0 };
+        const size = o.size || { width: 1920, height: 1080 };
+        outputs.push({
+          name: String(o.name),
+          isPrimary: Boolean(o.primary || o.priority === 1),
+          x: Number(pos.x) || 0,
+          y: Number(pos.y) || 0,
+          width: Number(size.width) || 1920,
+          height: Number(size.height) || 1080
+        });
+      }
+      return sortMonitorOutputs(outputs, inactive);
+    } catch {}
+  }
+  // Fallback: kscreen-doctor -o text output (strip ANSI escape codes)
+  const clean = raw.replace(/\x1b\[[0-9;]*m/g, '');
+  let cur = null;
+  for (const line of clean.split('\n')) {
+    const h = /^\s*Output:\s*\d+\s+(\S+)/.exec(line);
+    if (h) {
+      if (cur && cur.connected) {
+        if (cur.enabled) outputs.push(cur.data);
+        else inactive.push(cur.data.name);
+      }
+      cur = {
+        connected: !/\bdisconnected\b/i.test(line),
+        enabled: /\benabled\b/i.test(line),
+        data: { name: h[1], isPrimary: /\bprimary\b/i.test(line) || /priority 1\b/i.test(line), x: 0, y: 0, width: 1920, height: 1080 }
+      };
+      const geo = /Geometry:\s*(-?\d+),(-?\d+)\s+(\d+)x(\d+)/i.exec(line);
+      if (geo) {
+        cur.data.x = Number(geo[1]);
+        cur.data.y = Number(geo[2]);
+        cur.data.width = Number(geo[3]);
+        cur.data.height = Number(geo[4]);
+      }
+      continue;
+    }
+    if (!cur) continue;
+    if (/\bdisconnected\b/i.test(line)) cur.connected = false;
+    if (/\benabled\b/i.test(line)) cur.enabled = true;
+    if (/\bdisabled\b/i.test(line)) cur.enabled = false;
+    if (/\bprimary\b/i.test(line) || /priority 1\b/i.test(line)) cur.data.isPrimary = true;
+    const geo = /Geometry:\s*(-?\d+),(-?\d+)\s+(\d+)x(\d+)/i.exec(line);
+    if (geo) {
+      cur.data.x = Number(geo[1]);
+      cur.data.y = Number(geo[2]);
+      cur.data.width = Number(geo[3]);
+      cur.data.height = Number(geo[4]);
+    }
+  }
+  if (cur && cur.connected) {
+    if (cur.enabled) outputs.push(cur.data);
+    else inactive.push(cur.data.name);
+  }
+  return sortMonitorOutputs(outputs, inactive);
+}
+
+function parseWlrRandr(text) {
+  const raw = String(text || '').trim();
+  const outputs = [];
+  const inactive = [];
+  if (raw.startsWith('[')) {
+    try {
+      const list = JSON.parse(raw);
+      for (const o of list) {
+        if (!o || !o.name) continue;
+        if (o.enabled === false) {
+          inactive.push(String(o.name));
+          continue;
+        }
+        const curMode = (Array.isArray(o.modes) && o.modes.find((m) => m.current)) || (o.modes && o.modes[0]) || {};
+        const pos = o.position || { x: 0, y: 0 };
+        const scale = Number(o.scale) > 0 ? Number(o.scale) : 1;
+        outputs.push({
+          name: String(o.name),
+          isPrimary: outputs.length === 0,
+          x: Number(pos.x) || 0,
+          y: Number(pos.y) || 0,
+          width: Math.round((Number(curMode.width) || 1920) / scale),
+          height: Math.round((Number(curMode.height) || 1080) / scale)
+        });
+      }
+      return sortMonitorOutputs(outputs, inactive);
+    } catch {}
+  }
+  // Plain text wlr-randr output
+  let cur = null;
+  for (const line of raw.split('\n')) {
+    if (/^\S/.test(line)) {
+      if (cur) {
+        if (cur.enabled) outputs.push(cur.data);
+        else inactive.push(cur.data.name);
+      }
+      const name = line.trim().split(/\s+/)[0];
+      cur = { enabled: true, data: { name, isPrimary: outputs.length === 0, x: 0, y: 0, width: 1920, height: 1080 } };
+      continue;
+    }
+    if (!cur) continue;
+    const en = /^\s*Enabled:\s*(yes|no)/i.exec(line);
+    if (en) cur.enabled = en[1].toLowerCase() === 'yes';
+    const pos = /^\s*Position:\s*(-?\d+)\s*,\s*(-?\d+)/i.exec(line);
+    if (pos) {
+      cur.data.x = Number(pos[1]);
+      cur.data.y = Number(pos[2]);
+    }
+    const mode = /^\s*(\d+)x(\d+)\s+px,.*current/i.exec(line);
+    if (mode) {
+      cur.data.width = Number(mode[1]);
+      cur.data.height = Number(mode[2]);
+    }
+  }
+  if (cur) {
+    if (cur.enabled) outputs.push(cur.data);
+    else inactive.push(cur.data.name);
+  }
+  return sortMonitorOutputs(outputs, inactive);
+}
+
 // "_NET_WORKAREA(CARDINAL) = 0, 27, 3840, 1053, 0, 27, ..." -> first desktop's rect
 function parseNetWorkarea(text) {
   const m = /=\s*(-?\d+),\s*(-?\d+),\s*(\d+),\s*(\d+)/.exec(String(text || ''));
@@ -56,6 +268,9 @@ function parseNetWorkarea(text) {
 
 // Work area of one monitor = monitor rect ∩ desktop work area (panels are excluded)
 function intersectWorkarea(mon, wa) {
+  if (mon.workWidth && mon.workHeight) {
+    return { x: mon.workX || mon.x, y: mon.workY || mon.y, width: mon.workWidth, height: mon.workHeight };
+  }
   if (!wa) return { x: mon.x, y: mon.y, width: mon.width, height: mon.height };
   const x1 = Math.max(mon.x, wa.x);
   const y1 = Math.max(mon.y, wa.y);
@@ -68,7 +283,7 @@ function intersectWorkarea(mon, wa) {
 }
 
 // ---------------------------------------------------------------------------
-// wmctrl -lpG
+// wmctrl -lpG + Wayland window parsers (Hyprland, Sway/i3)
 // ---------------------------------------------------------------------------
 // "0x03a00003  0 12345  10   52   800  600  host Window title"
 function parseWmctrl(text) {
@@ -90,6 +305,86 @@ function parseWmctrl(text) {
     });
   }
   return list;
+}
+
+function parseHyprClients(jsonText) {
+  let list = [];
+  try {
+    list = JSON.parse(String(jsonText || '[]'));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const c of list) {
+    if (!c || c.mapped === false || !c.title) continue;
+    const addrStr = String(c.address || '');
+    // Use low 32 bits of address for numeric hwnd while preserving full hex address
+    const cleanHex = addrStr.replace(/^0x/i, '').slice(-8);
+    const hwnd = parseInt(cleanHex || '0', 16) || out.length + 1;
+    const at = Array.isArray(c.at) ? c.at : [0, 0];
+    const sz = Array.isArray(c.size) ? c.size : [800, 600];
+    const wsName = String((c.workspace && c.workspace.name) || '');
+    const isMin = Boolean(c.hidden) || wsName.startsWith('special:minimized');
+    const isMax = Boolean(c.fullscreen) || Number(c.fullscreen) > 0 || Number(c.fullscreenClient) > 0;
+    out.push({
+      id: addrStr.startsWith('0x') ? addrStr : '0x' + cleanHex,
+      hwnd,
+      address: addrStr,
+      pid: Number(c.pid) || 0,
+      title: String(c.title || ''),
+      appClass: String(c.class || c.initialClass || ''),
+      x: Number(at[0]) || 0,
+      y: Number(at[1]) || 0,
+      width: Number(sz[0]) || 800,
+      height: Number(sz[1]) || 600,
+      state: isMin ? 'minimized' : isMax ? 'maximized' : 'normal',
+      above: Boolean(c.pinned),
+      focusHistoryID: Number(c.focusHistoryID) || 0
+    });
+  }
+  // Sort so most recently focused (lowest focusHistoryID) is last (matching wmctrl bottom-to-top order before reverse)
+  out.sort((a, b) => b.focusHistoryID - a.focusHistoryID);
+  return out;
+}
+
+function parseSwayTree(jsonText) {
+  let root = null;
+  try {
+    root = JSON.parse(String(jsonText || '{}'));
+  } catch {
+    return [];
+  }
+  if (!root || typeof root !== 'object') return [];
+  const out = [];
+  function walk(node, inScratchpad = false) {
+    if (!node || typeof node !== 'object') return;
+    const scratch = inScratchpad || node.name === '__i3_scratch';
+    const isCon = (node.type === 'con' || node.type === 'floating_con') && (node.pid || node.app_id || node.window_properties);
+    if (isCon && node.name) {
+      const rect = node.rect || {};
+      const wp = node.window_properties || {};
+      const isMax = Number(node.fullscreen_mode) > 0;
+      out.push({
+        id: '0x' + Number(node.id || out.length + 1).toString(16).padStart(8, '0'),
+        hwnd: Number(node.id) || out.length + 1,
+        pid: Number(node.pid) || 0,
+        title: String(node.name || wp.title || ''),
+        appClass: String(node.app_id || wp.class || wp.instance || ''),
+        x: Number(rect.x) || 0,
+        y: Number(rect.y) || 0,
+        width: Number(rect.width) || 800,
+        height: Number(rect.height) || 600,
+        state: scratch ? 'minimized' : isMax ? 'maximized' : 'normal',
+        above: Boolean(node.sticky),
+        focused: Boolean(node.focused)
+      });
+    }
+    const children = [].concat(node.nodes || [], node.floating_nodes || []);
+    for (const ch of children) walk(ch, scratch);
+  }
+  walk(root, false);
+  return out;
 }
 
 // xprop -id X _NET_WM_STATE  ->  "minimized" | "maximized" | "normal" (+ above flag)
@@ -150,7 +445,7 @@ function resolveZoneRect(zone) {
 }
 
 // ---------------------------------------------------------------------------
-// pactl
+// pactl + wpctl (PipeWire / WirePlumber)
 // ---------------------------------------------------------------------------
 // "Volume: front-left: 32768 /  50% / -18.06 dB,   front-right: ..." -> 50 (average of channels)
 function parsePactlVolume(text) {
@@ -167,6 +462,17 @@ function parsePactlVolume(text) {
 function parsePactlMute(text) {
   const m = /Mute:\s*(yes|no)/i.exec(String(text || ''));
   return m ? m[1].toLowerCase() === 'yes' : null;
+}
+
+// "Volume: 0.65 [MUTED]" -> { volume: 65, muted: true }
+function parseWpctlVolume(text) {
+  const s = String(text || '');
+  const m = /Volume:\s*([0-9.]+)/i.exec(s);
+  if (!m) return null;
+  return {
+    volume: Math.max(0, Math.min(100, Math.round(Number(m[1]) * 100))),
+    muted: /\[MUTED\]/i.test(s)
+  };
 }
 
 // Splits "pactl list <kind>" output into blocks: { id, fields: {Key: value}, props: {key: value} }
@@ -385,15 +691,19 @@ function parseDesktopExec(exec) {
 }
 
 // ---------------------------------------------------------------------------
-// xdotool
+// xdotool / Wayland cursor & key mapping
 // ---------------------------------------------------------------------------
-// "x:812 y:403 screen:0 window:6291462"
+// "x:812 y:403 screen:0 window:6291462" or Hyprland "812, 403"
 function parseMouseLocation(text) {
-  const m = /x:(-?\d+)\s+y:(-?\d+)/.exec(String(text || ''));
-  return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
+  const s = String(text || '').trim();
+  const m = /x:(-?\d+)\s+y:(-?\d+)/.exec(s);
+  if (m) return { x: Number(m[1]), y: Number(m[2]) };
+  const h = /^(-?\d+)\s*,\s*(-?\d+)$/.exec(s);
+  if (h) return { x: Number(h[1]), y: Number(h[2]) };
+  return null;
 }
 
-// Windows key names used by the phone -> X keysyms
+// Windows key names used by the phone -> X / XKB keysyms
 const KEY_MAP = {
   CTRL: 'ctrl',
   CONTROL: 'ctrl',
@@ -426,6 +736,9 @@ const KEY_MAP = {
   PRINTSCREEN: 'Print',
   PRTSC: 'Print',
   CAPSLOCK: 'Caps_Lock',
+  NUMLOCK: 'Num_Lock',
+  SCROLLLOCK: 'Scroll_Lock',
+  PAUSE: 'Pause',
   MENU: 'Menu',
   APPS: 'Menu',
   VOLUME_MUTE: 'XF86AudioMute',
@@ -434,7 +747,35 @@ const KEY_MAP = {
   MEDIA_NEXT: 'XF86AudioNext',
   MEDIA_PREV: 'XF86AudioPrev',
   MEDIA_STOP: 'XF86AudioStop',
-  MEDIA_PLAY_PAUSE: 'XF86AudioPlay'
+  MEDIA_PLAY_PAUSE: 'XF86AudioPlay',
+  BROWSER_BACK: 'XF86Back',
+  BROWSER_FORWARD: 'XF86Forward',
+  BROWSER_REFRESH: 'XF86Reload',
+  BROWSER_HOME: 'XF86HomePage'
+};
+
+// Linux evdev keycodes (<linux/input-event-codes.h>) for ydotool on Wayland
+const EVDEV_KEYCODES = {
+  ESC: 1, ESCAPE: 1,
+  '1': 2, '2': 3, '3': 4, '4': 5, '5': 6, '6': 7, '7': 8, '8': 9, '9': 10, '0': 11,
+  BACKSPACE: 14, BS: 14, TAB: 15,
+  Q: 16, W: 17, E: 18, R: 19, T: 20, Y: 21, U: 22, I: 23, O: 24, P: 25,
+  ENTER: 28, RETURN: 28, CTRL: 29, CONTROL: 29,
+  A: 30, S: 31, D: 32, F: 33, G: 34, H: 35, J: 36, K: 37, L: 38,
+  SHIFT: 42,
+  Z: 44, X: 45, C: 46, V: 47, B: 48, N: 49, M: 50,
+  ALT: 56, SPACE: 57, CAPSLOCK: 58,
+  F1: 59, F2: 60, F3: 61, F4: 62, F5: 63, F6: 64, F7: 65, F8: 66, F9: 67, F10: 68,
+  NUMLOCK: 69, SCROLLLOCK: 70,
+  F11: 87, F12: 88,
+  PRINTSCREEN: 99, PRTSC: 99,
+  HOME: 102, UP: 103, PGUP: 104, PAGEUP: 104, LEFT: 105, RIGHT: 106, END: 107, DOWN: 108, PGDN: 109, PAGEDOWN: 109,
+  INSERT: 110, DELETE: 111, DEL: 111,
+  VOLUME_MUTE: 113, VOLUME_DOWN: 114, VOLUME_UP: 115,
+  PAUSE: 119,
+  WIN: 125, LWIN: 125, SUPER: 125,
+  MENU: 127, APPS: 127,
+  MEDIA_STOP: 128, MEDIA_NEXT: 163, MEDIA_PLAY_PAUSE: 164, MEDIA_PREV: 165
 };
 
 // "CTRL+SHIFT+ESC" -> "ctrl+shift+Escape"; unknown parts are dropped like MapKeyNameToVk() does
@@ -454,16 +795,77 @@ function mapKeyCombo(combo) {
   return out.join('+');
 }
 
+// Convert combo into ydotool key sequence args: e.g. "CTRL+C" -> ["29:1", "46:1", "46:0", "29:0"]
+// action: 'tap' | 'down' | 'up'
+function mapYdotoolKeys(combo, action = 'tap') {
+  const parts = String(combo || '')
+    .toUpperCase()
+    .split('+')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const codes = parts.map((p) => EVDEV_KEYCODES[p]).filter((c) => Number.isInteger(c));
+  if (!codes.length) return [];
+  if (action === 'down') return codes.map((c) => `${c}:1`);
+  if (action === 'up') return codes.slice().reverse().map((c) => `${c}:0`);
+  return [...codes.map((c) => `${c}:1`), ...codes.slice().reverse().map((c) => `${c}:0`)];
+}
+
+// Convert combo into wtype arguments for wlroots Wayland virtual keyboard
+function mapWtypeArgs(combo, action = 'tap') {
+  const parts = String(combo || '')
+    .toUpperCase()
+    .split('+')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const modMap = { CTRL: 'ctrl', CONTROL: 'ctrl', ALT: 'alt', SHIFT: 'shift', WIN: 'logo', LWIN: 'logo', SUPER: 'logo' };
+  const mods = [];
+  const keys = [];
+  for (const p of parts) {
+    if (modMap[p]) mods.push(modMap[p]);
+    else {
+      const k = KEY_MAP[p] || (/^F([1-9]|1[0-9]|2[0-4])$/.test(p) ? p : /^[A-Z0-9]$/.test(p) ? p.toLowerCase() : '');
+      if (k) keys.push(k);
+    }
+  }
+  const argv = [];
+  if (action === 'down') {
+    for (const m of mods) argv.push('-M', m);
+    for (const k of keys) argv.push('-P', k);
+  } else if (action === 'up') {
+    for (const k of keys.slice().reverse()) argv.push('-p', k);
+    for (const m of mods.slice().reverse()) argv.push('-m', m);
+  } else {
+    for (const m of mods) argv.push('-M', m);
+    for (const k of keys) argv.push('-k', k);
+    if (!keys.length && mods.length) {
+      // Bare modifier tap (e.g. WIN)
+      const m = mods.pop();
+      argv.length = 0;
+      for (const om of mods) argv.push('-M', om);
+      argv.push('-k', m === 'logo' ? 'Super_L' : m);
+    }
+    for (const m of mods.slice().reverse()) argv.push('-m', m);
+  }
+  return argv;
+}
+
 module.exports = {
   parseXrandr,
+  parseHyprMonitors,
+  parseSwayOutputs,
+  parseKscreenMonitors,
+  parseWlrRandr,
   parseNetWorkarea,
   intersectWorkarea,
   parseWmctrl,
+  parseHyprClients,
+  parseSwayTree,
   parseNetWmState,
   classifyZone,
   resolveZoneRect,
   parsePactlVolume,
   parsePactlMute,
+  parseWpctlVolume,
   parsePactlBlocks,
   parsePactlSinkInputs,
   parsePactlSinks,
@@ -482,5 +884,8 @@ module.exports = {
   parseDesktopExec,
   parseMouseLocation,
   mapKeyCombo,
-  KEY_MAP
+  mapYdotoolKeys,
+  mapWtypeArgs,
+  KEY_MAP,
+  EVDEV_KEYCODES
 };

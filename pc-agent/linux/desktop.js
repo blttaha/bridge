@@ -1,13 +1,20 @@
 'use strict';
-// Monitors, windows, installed apps, file browsing and launching on an X11 desktop.
+// Monitors, windows, installed apps, file browsing and launching across X11 and Wayland desktops
+// (GNOME/Mutter, KDE Plasma/KWin, Hyprland, Sway, wlroots/Wayfire/River/Labwc, i3, XFCE, Cinnamon, MATE).
 // Return shapes follow BridgeHelper.cs (MonitorData, GetOpenWindows, GetInstalledApps, ...).
 
 const path = require('path').posix; // Linux paths, also when the tests run on Windows
 const {
   parseXrandr,
+  parseHyprMonitors,
+  parseSwayOutputs,
+  parseKscreenMonitors,
+  parseWlrRandr,
   parseNetWorkarea,
   intersectWorkarea,
   parseWmctrl,
+  parseHyprClients,
+  parseSwayTree,
   parseNetWmState,
   classifyZone,
   resolveZoneRect,
@@ -17,7 +24,7 @@ const {
   parseDesktopExec,
   splitArgs
 } = require('./parsers');
-const { execOk, sleep, clamp, num, bool, formatDate, formatFileSize, missingToolMessage } = require('./util');
+const { execOk, getSession, sleep, clamp, num, bool, formatDate, formatFileSize, missingToolMessage } = require('./util');
 
 const INTERNAL_OUTPUT_RE = /^(eDP|LVDS|DSI)/i;
 
@@ -26,21 +33,140 @@ function createDesktop(sys) {
     monitorsCache: null,
     monitorsTs: 0,
     brightness: new Map(), // output name -> 0..100
-    blackout: new Set(), // output names blacked out (xrandr brightness 0)
+    blackout: new Set(), // output names blacked out (xrandr brightness 0 / DPMS off)
     iconCache: new Map(),
     appsCache: null,
-    appsTs: 0
+    appsTs: 0,
+    hyprAddrByHwnd: new Map() // numeric hwnd -> full 0x... Hyprland window address
   };
 
   // -------------------------------------------------------------------------
-  // Monitors
+  // Monitors (Multi-backend: Hyprland, Sway/i3, KDE kscreen-doctor, wlr-randr, xrandr, /sys/class/drm)
   // -------------------------------------------------------------------------
+  function readDrmFallback() {
+    const outputs = [];
+    const inactive = [];
+    try {
+      const entries = sys.fs.readdirSync('/sys/class/drm');
+      let xOff = 0;
+      for (const name of entries) {
+        const m = /^card\d+-(.+)$/.exec(name);
+        if (!m) continue;
+        const outName = m[1];
+        if (/^Writeback/i.test(outName)) continue;
+        let status = '';
+        try {
+          status = sys.fs.readFileSync(`/sys/class/drm/${name}/status`, 'utf8').trim();
+        } catch {}
+        if (status !== 'connected') continue;
+        let enabled = 'enabled';
+        try {
+          enabled = sys.fs.readFileSync(`/sys/class/drm/${name}/enabled`, 'utf8').trim();
+        } catch {}
+        if (enabled === 'disabled') {
+          inactive.push(outName);
+          continue;
+        }
+        let w = 1920;
+        let h = 1080;
+        try {
+          const modes = sys.fs.readFileSync(`/sys/class/drm/${name}/modes`, 'utf8').trim().split('\n')[0] || '';
+          const dm = /^(\d+)x(\d+)/.exec(modes);
+          if (dm) {
+            w = Number(dm[1]);
+            h = Number(dm[2]);
+          }
+        } catch {}
+        outputs.push({
+          name: outName,
+          isPrimary: outputs.length === 0,
+          x: xOff,
+          y: 0,
+          width: w,
+          height: h
+        });
+        xOff += w;
+      }
+    } catch {}
+    return { outputs, inactive };
+  }
+
+  async function queryRawMonitors() {
+    const sess = getSession(sys);
+    // 1. Hyprland native monitor query
+    if ((sess.compositor === 'hyprland' || (sess.isWayland && !sys.has('xrandr'))) && sys.has('hyprctl')) {
+      const r = await sys.exec('hyprctl', ['-j', 'monitors', 'all'], { timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0 && r.stdout.trim()) {
+        const parsed = parseHyprMonitors(r.stdout);
+        if (parsed.outputs.length > 0 || parsed.inactive.length > 0) return { ...parsed, backend: 'hyprctl' };
+      }
+    }
+    // 2. Sway / i3 native output query
+    if ((sess.compositor === 'sway' || (sess.isWayland && !sys.has('xrandr'))) && sys.has('swaymsg')) {
+      const r = await sys.exec('swaymsg', ['-t', 'get_outputs', '--raw'], { timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0 && r.stdout.trim()) {
+        const parsed = parseSwayOutputs(r.stdout);
+        if (parsed.outputs.length > 0 || parsed.inactive.length > 0) return { ...parsed, backend: 'swaymsg' };
+      }
+    }
+    // 3. KDE Plasma Wayland/X11 kscreen-doctor
+    if ((sess.compositor === 'kde' || (sess.isWayland && !sys.has('xrandr'))) && sys.has('kscreen-doctor')) {
+      let r = await sys.exec('kscreen-doctor', ['-j'], { timeout: 3000 }).catch(() => null);
+      if (!r || r.code !== 0 || !r.stdout.trim()) {
+        r = await sys.exec('kscreen-doctor', ['-o'], { timeout: 3000 }).catch(() => null);
+      }
+      if (r && r.code === 0 && r.stdout.trim()) {
+        const parsed = parseKscreenMonitors(r.stdout);
+        if (parsed.outputs.length > 0 || parsed.inactive.length > 0) return { ...parsed, backend: 'kscreen-doctor' };
+      }
+    }
+    // 4. wlroots Wayland (wlr-randr)
+    if (sess.isWayland && sys.has('wlr-randr')) {
+      let r = await sys.exec('wlr-randr', ['--json'], { timeout: 3000 }).catch(() => null);
+      if (!r || r.code !== 0 || !r.stdout.trim()) {
+        r = await sys.exec('wlr-randr', [], { timeout: 3000 }).catch(() => null);
+      }
+      if (r && r.code === 0 && r.stdout.trim()) {
+        const parsed = parseWlrRandr(r.stdout);
+        if (parsed.outputs.length > 0 || parsed.inactive.length > 0) return { ...parsed, backend: 'wlr-randr' };
+      }
+    }
+    // 5. GNOME gnome-randr (follows xrandr output format)
+    if (sess.isWayland && sys.has('gnome-randr')) {
+      const r = await sys.exec('gnome-randr', ['query'], { timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0 && r.stdout.trim()) {
+        const parsed = parseXrandr(r.stdout);
+        if (parsed.outputs.length > 0) return { ...parsed, backend: 'gnome-randr' };
+      }
+    }
+    // 6. Standard X11 / XWayland xrandr
+    if (sys.has('xrandr')) {
+      const r = await sys.exec('xrandr', ['--query'], { timeout: 4000 });
+      if (r.code === 0) {
+        return { ...parseXrandr(r.stdout), backend: 'xrandr' };
+      }
+      if (!sess.isWayland) {
+        const msg = (r.stderr || r.stdout || '').trim().split('\n')[0];
+        throw new Error(`xrandr başarısız oldu${msg ? ': ' + msg : ''} (kod ${r.code})`);
+      }
+    }
+    // 7. Kernel DRM sysfs fallback on Wayland
+    if (sess.isWayland) {
+      const drm = readDrmFallback();
+      if (drm.outputs.length > 0) return { ...drm, backend: 'drm' };
+      return {
+        outputs: [{ name: 'WAYLAND-1', isPrimary: true, x: 0, y: 0, width: 1920, height: 1080 }],
+        inactive: [],
+        backend: 'wayland-default'
+      };
+    }
+    throw new Error(missingToolMessage('xrandr'));
+  }
+
   async function readMonitors() {
-    if (!sys.has('xrandr')) throw new Error(missingToolMessage('xrandr'));
-    const r = await execOk(sys, 'xrandr', ['--query'], { timeout: 4000 });
-    const { outputs } = parseXrandr(r.stdout);
+    const { outputs, backend } = await queryRawMonitors();
     let workarea = null;
-    if (sys.has('xprop')) {
+    if (backend === 'xrandr' && sys.has('xprop')) {
       const wa = await sys.exec('xprop', ['-root', '_NET_WORKAREA'], { timeout: 1500 }).catch(() => null);
       if (wa && wa.code === 0) workarea = parseNetWorkarea(wa.stdout);
     }
@@ -68,14 +194,12 @@ function createDesktop(sys) {
 
   async function getMonitors(maxAgeMs = 0) {
     if (maxAgeMs > 0 && state.monitorsCache && sys.now() - state.monitorsTs < maxAgeMs) {
-      // flags can change between reads
       return state.monitorsCache.map((m) => ({
         ...m,
         isBlackedOut: state.blackout.has(m.deviceName),
         brightness: state.brightness.has(m.deviceName) ? state.brightness.get(m.deviceName) : 100
       }));
     }
-    // Concurrent callers share one xrandr run
     if (!state.monitorsPending) {
       state.monitorsPending = readMonitors().finally(() => {
         state.monitorsPending = null;
@@ -105,10 +229,28 @@ function createDesktop(sys) {
     return mons[i];
   }
 
-  // Software brightness through the gamma ramp; brightness 0 = black screen ("blackout")
+  // Software brightness through gamma ramp or compositor DPMS; brightness 0 = black screen ("blackout")
   async function applyXrandrBrightness(output, level) {
-    if (!sys.has('xrandr')) throw new Error(missingToolMessage('xrandr'));
+    const sess = getSession(sys);
     const v = (Math.max(0, Math.min(100, level)) / 100).toFixed(2);
+    if (sess.isWayland) {
+      if (sess.compositor === 'hyprland' && sys.has('hyprctl')) {
+        if (level <= 0) return sys.exec('hyprctl', ['dispatch', 'dpms', 'off', output], { timeout: 3000 });
+        return sys.exec('hyprctl', ['dispatch', 'dpms', 'on', output], { timeout: 3000 });
+      }
+      if (sess.compositor === 'sway' && sys.has('swaymsg')) {
+        return sys.exec('swaymsg', ['output', output, 'power', level <= 0 ? 'off' : 'on'], { timeout: 3000 });
+      }
+      if (sys.has('wlr-randr') && level <= 0) {
+        return sys.exec('wlr-randr', ['--output', output, '--off'], { timeout: 3000 });
+      }
+      if (sys.has('xrandr')) {
+        const r = await sys.exec('xrandr', ['--output', output, '--brightness', v], { timeout: 4000 }).catch(() => null);
+        if (r && r.code === 0) return r;
+      }
+      return { code: 0, stdout: '', stderr: '' };
+    }
+    if (!sys.has('xrandr')) throw new Error(missingToolMessage('xrandr'));
     return execOk(sys, 'xrandr', ['--output', output, '--brightness', v], { timeout: 4000 });
   }
 
@@ -121,11 +263,14 @@ function createDesktop(sys) {
     for (const m of targets) {
       state.brightness.set(m.deviceName, level);
       try {
-        // Laptop panels: real backlight. External monitors: gamma (DDC/CI would need root / ddcutil)
         if (INTERNAL_OUTPUT_RE.test(m.deviceName) && sys.has('brightnessctl')) {
           await execOk(sys, 'brightnessctl', ['set', Math.max(1, level) + '%'], { timeout: 4000 });
+        } else if (INTERNAL_OUTPUT_RE.test(m.deviceName) && sys.has('light')) {
+          await execOk(sys, 'light', ['-S', String(Math.max(1, level))], { timeout: 4000 });
+        } else if (!INTERNAL_OUTPUT_RE.test(m.deviceName) && sys.has('ddcutil')) {
+          await execOk(sys, 'ddcutil', ['setvcp', '10', String(level), '--noverify'], { timeout: 5000 });
         } else if (!state.blackout.has(m.deviceName)) {
-          await applyXrandrBrightness(m.deviceName, Math.max(10, level)); // never fully dark by accident
+          await applyXrandrBrightness(m.deviceName, Math.max(10, level));
         }
       } catch (e) {
         errors.push(e.message);
@@ -134,17 +279,76 @@ function createDesktop(sys) {
     if (errors.length === targets.length) throw new Error('Parlaklık ayarlanamadı: ' + errors[0]);
   }
 
+  async function setWaylandDpms(turnOn) {
+    const sess = getSession(sys);
+    if (sess.compositor === 'hyprland' && sys.has('hyprctl')) {
+      const r = await sys.exec('hyprctl', ['dispatch', 'dpms', turnOn ? 'on' : 'off'], { timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0) return true;
+    }
+    if (sess.compositor === 'sway' && sys.has('swaymsg')) {
+      const r = await sys.exec('swaymsg', ['output', '*', 'power', turnOn ? 'on' : 'off'], { timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0) return true;
+    }
+    if (sess.compositor === 'kde' && sys.has('kscreen-doctor')) {
+      const r = await sys.exec('kscreen-doctor', ['--dpms', turnOn ? 'on' : 'off'], { timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0) return true;
+    }
+    if (sess.compositor === 'gnome' && sys.has('busctl')) {
+      const r = await sys
+        .exec(
+          'busctl',
+          [
+            '--user',
+            'set-property',
+            'org.gnome.Mutter.DisplayConfig',
+            '/org/gnome/Mutter/DisplayConfig',
+            'org.gnome.Mutter.DisplayConfig',
+            'PowerSaveMode',
+            'i',
+            turnOn ? '0' : '3'
+          ],
+          { timeout: 3000 }
+        )
+        .catch(() => null);
+      if (r && r.code === 0) return true;
+    }
+    if (sys.has('xset')) {
+      const r = await sys.exec('xset', ['dpms', 'force', turnOn ? 'on' : 'off'], { timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0) return true;
+    }
+    return false;
+  }
+
   async function monitorPower(args) {
     const action = String(args.action || 'off');
-    if (!sys.has('xset')) throw new Error(missingToolMessage('xset'));
+    const sess = getSession(sys);
+    const hasWaylandDpms =
+      sess.isWayland &&
+      ((sess.compositor === 'hyprland' && sys.has('hyprctl')) ||
+        (sess.compositor === 'sway' && sys.has('swaymsg')) ||
+        (sess.compositor === 'kde' && sys.has('kscreen-doctor')) ||
+        (sess.compositor === 'gnome' && sys.has('busctl')));
+
+    if (!hasWaylandDpms && !sys.has('xset')) throw new Error(missingToolMessage('xset'));
+
     if (action === 'off') {
-      // Give the reply time to leave before the screens go dark
-      setTimeout(() => sys.exec('xset', ['dpms', 'force', 'off'], { timeout: 3000 }).catch(() => {}), 80);
+      setTimeout(() => {
+        if (hasWaylandDpms) setWaylandDpms(false).catch(() => {});
+        else sys.exec('xset', ['dpms', 'force', 'off'], { timeout: 3000 }).catch(() => {});
+      }, 80);
       return { status: 'monitors_sleeping' };
     }
-    await sys.exec('xset', ['dpms', 'force', 'on'], { timeout: 3000 }).catch(() => {});
-    // Wake pulse like the Windows bridge (some screens only wake on input)
-    if (sys.has('xdotool')) sys.exec('xdotool', ['mousemove_relative', '--', '1', '1'], { timeout: 2000 }).then(() => sys.exec('xdotool', ['mousemove_relative', '--', '-1', '-1'], { timeout: 2000 })).catch(() => {});
+    if (hasWaylandDpms) {
+      await setWaylandDpms(true).catch(() => {});
+    } else {
+      await sys.exec('xset', ['dpms', 'force', 'on'], { timeout: 3000 }).catch(() => {});
+    }
+    if (sys.has('xdotool')) {
+      sys
+        .exec('xdotool', ['mousemove_relative', '--', '1', '1'], { timeout: 2000 })
+        .then(() => sys.exec('xdotool', ['mousemove_relative', '--', '-1', '-1'], { timeout: 2000 }))
+        .catch(() => {});
+    }
     if (args.clearBlackouts === undefined || bool(args.clearBlackouts)) await clearBlackouts();
     return { status: 'monitors_awake' };
   }
@@ -171,7 +375,6 @@ function createDesktop(sys) {
     const shouldBeOn = mode === 'toggle' ? !currentlyOn : mode === 'on' || mode === 'true';
     if (shouldBeOn && !currentlyOn) {
       state.blackout.add(name);
-      // Gamma 0 is a real black curtain (input keeps working). Virtual screens without gamma just keep the flag.
       await applyXrandrBrightness(name, 0).catch((e) => sys.log('blackout:', e.message));
     } else if (!shouldBeOn && currentlyOn) {
       state.blackout.delete(name);
@@ -181,16 +384,96 @@ function createDesktop(sys) {
     return getMonitors();
   }
 
-  // DisplaySwitch.exe equivalent with xrandr
+  // DisplaySwitch.exe equivalent across Hyprland, Sway, KDE kscreen-doctor, wlr-randr, and X11 xrandr
   async function displayTopology(args) {
     const mode = String(args.mode || 'extend');
-    if (!sys.has('xrandr')) throw new Error(missingToolMessage('xrandr'));
-    const r = await execOk(sys, 'xrandr', ['--query'], { timeout: 4000 });
-    const { outputs, inactive } = parseXrandr(r.stdout);
+    const { outputs, inactive, backend } = await queryRawMonitors();
     const all = outputs.filter((o) => !o.virtual).map((o) => o.name).concat(inactive);
     const internal = all.filter((n) => INTERNAL_OUTPUT_RE.test(n));
     const external = all.filter((n) => !INTERNAL_OUTPUT_RE.test(n));
     const primary = (outputs.find((o) => o.isPrimary) || {}).name || all[0];
+
+    if (all.length === 0) return { mode, applied: false };
+
+    if (backend === 'hyprctl') {
+      const keep = mode === 'internal' || mode === 'primary_only' ? internal[0] || primary : external[0] || primary;
+      for (const n of all) {
+        if (mode === 'internal' || mode === 'primary_only' || mode === 'external' || mode === 'secondary_only') {
+          const spec = n === keep ? `${n},preferred,0x0,1` : `${n},disable`;
+          await execOk(sys, 'hyprctl', ['keyword', 'monitor', spec], { timeout: 5000 });
+        } else if (mode === 'clone' || mode === 'duplicate') {
+          const spec = n === primary ? `${n},preferred,0x0,1` : `${n},preferred,auto,1,mirror,${primary}`;
+          await execOk(sys, 'hyprctl', ['keyword', 'monitor', spec], { timeout: 5000 });
+        } else {
+          await execOk(sys, 'hyprctl', ['keyword', 'monitor', `${n},preferred,auto,1`], { timeout: 5000 });
+        }
+      }
+      state.monitorsCache = null;
+      return { mode, applied: true, backend };
+    }
+
+    if (backend === 'swaymsg') {
+      const keep = mode === 'internal' || mode === 'primary_only' ? internal[0] || primary : external[0] || primary;
+      let xOff = 0;
+      for (const n of [primary, ...all.filter((x) => x !== primary)]) {
+        if (mode === 'internal' || mode === 'primary_only' || mode === 'external' || mode === 'secondary_only') {
+          await execOk(sys, 'swaymsg', ['output', n, n === keep ? 'enable' : 'disable'], { timeout: 5000 });
+        } else if (mode === 'clone' || mode === 'duplicate') {
+          await execOk(sys, 'swaymsg', ['output', n, 'enable', 'pos', '0', '0'], { timeout: 5000 });
+        } else {
+          const o = outputs.find((x) => x.name === n);
+          await execOk(sys, 'swaymsg', ['output', n, 'enable', 'pos', String(xOff), '0'], { timeout: 5000 });
+          xOff += (o && o.width) || 1920;
+        }
+      }
+      state.monitorsCache = null;
+      return { mode, applied: true, backend };
+    }
+
+    if (backend === 'kscreen-doctor') {
+      const keep = mode === 'internal' || mode === 'primary_only' ? internal[0] || primary : external[0] || primary;
+      const kArgs = [];
+      let xOff = 0;
+      for (const n of [primary, ...all.filter((x) => x !== primary)]) {
+        if (mode === 'internal' || mode === 'primary_only' || mode === 'external' || mode === 'secondary_only') {
+          kArgs.push(`output.${n}.${n === keep ? 'enable' : 'disable'}`);
+          if (n === keep) kArgs.push(`output.${n}.position.0,0`);
+        } else if (mode === 'clone' || mode === 'duplicate') {
+          kArgs.push(`output.${n}.enable`, `output.${n}.position.0,0`);
+        } else {
+          const o = outputs.find((x) => x.name === n);
+          kArgs.push(`output.${n}.enable`, `output.${n}.position.${xOff},0`);
+          xOff += (o && o.width) || 1920;
+        }
+      }
+      if (kArgs.length > 0) await execOk(sys, 'kscreen-doctor', kArgs, { timeout: 8000 });
+      state.monitorsCache = null;
+      return { mode, applied: true, backend };
+    }
+
+    if (backend === 'wlr-randr') {
+      const keep = mode === 'internal' || mode === 'primary_only' ? internal[0] || primary : external[0] || primary;
+      const wArgs = [];
+      let xOff = 0;
+      for (const n of [primary, ...all.filter((x) => x !== primary)]) {
+        if (mode === 'internal' || mode === 'primary_only' || mode === 'external' || mode === 'secondary_only') {
+          wArgs.push('--output', n, n === keep ? '--on' : '--off');
+          if (n === keep) wArgs.push('--pos', '0,0');
+        } else if (mode === 'clone' || mode === 'duplicate') {
+          wArgs.push('--output', n, '--on', '--pos', '0,0');
+        } else {
+          const o = outputs.find((x) => x.name === n);
+          wArgs.push('--output', n, '--on', '--pos', `${xOff},0`);
+          xOff += (o && o.width) || 1920;
+        }
+      }
+      if (wArgs.length > 0) await execOk(sys, 'wlr-randr', wArgs, { timeout: 8000 });
+      state.monitorsCache = null;
+      return { mode, applied: true, backend };
+    }
+
+    const randrCmd = backend === 'gnome-randr' ? 'gnome-randr' : 'xrandr';
+    if (!sys.has(randrCmd)) throw new Error(missingToolMessage('xrandr'));
     const argv = [];
     if (mode === 'internal' || mode === 'primary_only') {
       const keep = internal[0] || primary;
@@ -207,7 +490,7 @@ function createDesktop(sys) {
         prev = n;
       }
     }
-    if (all.length > 0) await execOk(sys, 'xrandr', argv, { timeout: 8000 });
+    if (all.length > 0) await execOk(sys, randrCmd, argv, { timeout: 8000 });
     state.monitorsCache = null;
     return { mode, applied: all.length > 0 };
   }
@@ -341,7 +624,7 @@ function createDesktop(sys) {
   }
 
   // -------------------------------------------------------------------------
-  // Windows
+  // Windows (Multi-backend: Hyprland, Sway/i3, KDE kdotool, X11/XWayland wmctrl)
   // -------------------------------------------------------------------------
   function procInfo(pid) {
     let name = '';
@@ -367,31 +650,73 @@ function createDesktop(sys) {
     return hit ? hit.icon : '';
   }
 
+  function detectWindowBackend() {
+    const sess = getSession(sys);
+    if ((sess.compositor === 'hyprland' || (sess.isWayland && !sys.has('wmctrl'))) && sys.has('hyprctl')) return 'hyprctl';
+    if ((sess.compositor === 'sway' || (sess.isWayland && !sys.has('wmctrl'))) && sys.has('swaymsg')) return 'swaymsg';
+    if (sess.compositor === 'i3' && sys.has('i3-msg') && !sys.has('wmctrl')) return 'i3-msg';
+    if (sys.has('wmctrl')) return 'wmctrl';
+    if (sys.has('hyprctl')) return 'hyprctl';
+    if (sys.has('swaymsg')) return 'swaymsg';
+    if (sys.has('i3-msg')) return 'i3-msg';
+    return sess.isWayland ? 'wayland-none' : 'missing';
+  }
+
+  async function readRawWindows() {
+    const backend = detectWindowBackend();
+    if (backend === 'hyprctl') {
+      const r = await sys.exec('hyprctl', ['-j', 'clients'], { timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0) {
+        const list = parseHyprClients(r.stdout);
+        state.hyprAddrByHwnd.clear();
+        for (const w of list) state.hyprAddrByHwnd.set(w.hwnd, w.address || w.id);
+        return { raw: list, states: list.map((w) => ({ state: w.state, above: w.above })), backend };
+      }
+    }
+    if (backend === 'swaymsg' || backend === 'i3-msg') {
+      const r = await sys.exec(backend, ['-t', 'get_tree'], { timeout: 3000 }).catch(() => null);
+      if (r && r.code === 0) {
+        const list = parseSwayTree(r.stdout);
+        return { raw: list, states: list.map((w) => ({ state: w.state, above: w.above })), backend };
+      }
+    }
+    if (sys.has('wmctrl')) {
+      const r = await sys.exec('wmctrl', ['-lpG'], { timeout: 4000 });
+      if (r.code !== 0) {
+        if (getSession(sys).isWayland) return { raw: [], states: [], backend: 'wayland-none' };
+        const msg = (r.stderr || r.stdout || '').trim().split('\n')[0];
+        throw new Error(`wmctrl başarısız oldu${msg ? ': ' + msg : ''} (kod ${r.code})`);
+      }
+      const raw = parseWmctrl(r.stdout).filter((w) => w.desktop !== -1 && w.title);
+      const states = await Promise.all(
+        raw.map((w) =>
+          sys.has('xprop')
+            ? sys
+                .exec('xprop', ['-id', w.id, '_NET_WM_STATE'], { timeout: 1500 })
+                .then((x) => parseNetWmState(x.stdout))
+                .catch(() => ({ state: 'normal', above: false }))
+            : Promise.resolve({ state: 'normal', above: false })
+        )
+      );
+      return { raw, states, backend: 'wmctrl' };
+    }
+    if (getSession(sys).isWayland) return { raw: [], states: [], backend: 'wayland-none' };
+    throw new Error(missingToolMessage('wmctrl'));
+  }
+
   async function getWindows() {
-    if (!sys.has('wmctrl')) throw new Error(missingToolMessage('wmctrl'));
-    const r = await execOk(sys, 'wmctrl', ['-lpG'], { timeout: 4000 });
-    const raw = parseWmctrl(r.stdout).filter((w) => w.desktop !== -1 && w.title);
+    const { raw, states } = await readRawWindows();
     const mons = await getMonitors(2500).catch(() => []);
     const ownPid = process.pid;
-    // Window states in parallel (one xprop each); wmctrl lists bottom-to-top stacking order
-    const states = await Promise.all(
-      raw.map((w) =>
-        sys.has('xprop')
-          ? sys
-              .exec('xprop', ['-id', w.id, '_NET_WM_STATE'], { timeout: 1500 })
-              .then((x) => parseNetWmState(x.stdout))
-              .catch(() => ({ state: 'normal', above: false }))
-          : Promise.resolve({ state: 'normal', above: false })
-      )
-    );
     const results = [];
     const rectsAbove = new Map(); // monitor -> rects of windows above (we walk top-down)
     let zOrderCounter = 0;
     for (let i = raw.length - 1; i >= 0; i--) {
       const w = raw[i];
-      if (w.pid === ownPid) continue;
-      const { state: winState, above } = states[i];
-      const { name: procName, exe } = procInfo(w.pid);
+      if (w.pid && w.pid === ownPid) continue;
+      const { state: winState, above } = states[i] || { state: 'normal', above: false };
+      const { name: procFromPid, exe } = w.pid ? procInfo(w.pid) : { name: '', exe: '' };
+      const procName = procFromPid || w.appClass || '';
       const cx = w.x + w.width / 2;
       const cy = w.y + w.height / 2;
       let monIdx = mons.findIndex((m) => cx >= m.x && cx < m.x + m.width && cy >= m.y && cy < m.y + m.height);
@@ -454,6 +779,7 @@ function createDesktop(sys) {
   }
 
   const hexId = (hwnd) => '0x' + Number(hwnd).toString(16).padStart(8, '0');
+  const hyprTarget = (hwnd) => `address:${state.hyprAddrByHwnd.get(hwnd) || hexId(hwnd)}`;
 
   async function wm(args) {
     if (!sys.has('wmctrl')) throw new Error(missingToolMessage('wmctrl'));
@@ -488,6 +814,48 @@ function createDesktop(sys) {
     if (monitorIndex < 0 || monitorIndex >= mons.length) monitorIndex = 0;
     const mon = mons[monitorIndex];
     const id = hexId(hwnd);
+    const backend = detectWindowBackend();
+    const tx = mon.workX + Math.round(x * mon.workWidth);
+    const ty = mon.workY + Math.round(y * mon.workHeight);
+    const tw = Math.round(w * mon.workWidth);
+    const th = Math.round(h * mon.workHeight);
+    const noActivate = bool(args.noActivate);
+    const isMax = state0 === 'maximized' || (w >= 0.98 && h >= 0.98 && x <= 0.02 && y <= 0.02);
+
+    if (backend === 'hyprctl') {
+      const addr = hyprTarget(hwnd);
+      if (state0 === 'minimized') {
+        await sys.exec('hyprctl', ['dispatch', 'movetoworkspacesilent', `special:minimized,${addr}`], { timeout: 3000 });
+        return { snapped: true, hwnd, state: 'minimized' };
+      }
+      if (!noActivate) await sys.exec('hyprctl', ['dispatch', 'focuswindow', addr], { timeout: 3000 });
+      if (isMax) {
+        await sys.exec('hyprctl', ['dispatch', 'movewindow', `mon:${mon.deviceName},${addr}`], { timeout: 3000 });
+        await sys.exec('hyprctl', ['dispatch', 'fullscreen', '1'], { timeout: 3000 });
+        return { snapped: true, hwnd, state: 'maximized', monitorIndex };
+      }
+      await sys.exec('hyprctl', ['dispatch', 'setfloating', addr], { timeout: 3000 });
+      await sys.exec('hyprctl', ['dispatch', 'movewindowpixel', `exact ${tx} ${ty},${addr}`], { timeout: 3000 });
+      await sys.exec('hyprctl', ['dispatch', 'resizewindowpixel', `exact ${tw} ${th},${addr}`], { timeout: 3000 });
+      return { snapped: true, hwnd, monitorIndex, rect: { x: tx, y: ty, width: tw, height: th } };
+    }
+
+    if (backend === 'swaymsg' || backend === 'i3-msg') {
+      if (state0 === 'minimized') {
+        await sys.exec(backend, [`[con_id=${hwnd}] move scratchpad`], { timeout: 3000 });
+        return { snapped: true, hwnd, state: 'minimized' };
+      }
+      if (isMax) {
+        await sys.exec(backend, [`[con_id=${hwnd}] move container to output ${mon.deviceName}, fullscreen enable${noActivate ? '' : ', focus'}`], { timeout: 3000 });
+        return { snapped: true, hwnd, state: 'maximized', monitorIndex };
+      }
+      await sys.exec(
+        backend,
+        [`[con_id=${hwnd}] fullscreen disable, floating enable, move position ${tx} ${ty}, resize set ${tw} ${th}${noActivate ? '' : ', focus'}`],
+        { timeout: 3000 }
+      );
+      return { snapped: true, hwnd, monitorIndex, rect: { x: tx, y: ty, width: tw, height: th } };
+    }
 
     if (state0 === 'minimized') {
       if (!sys.has('xdotool')) throw new Error(missingToolMessage('xdotool'));
@@ -496,13 +864,8 @@ function createDesktop(sys) {
     }
     // Un-maximize first, otherwise the window manager ignores the move
     await wm(['-i', '-r', id, '-b', 'remove,maximized_vert,maximized_horz,fullscreen']);
-    const tx = mon.workX + Math.round(x * mon.workWidth);
-    const ty = mon.workY + Math.round(y * mon.workHeight);
-    const tw = Math.round(w * mon.workWidth);
-    const th = Math.round(h * mon.workHeight);
     await wm(['-i', '-r', id, '-e', `0,${tx},${ty},${tw},${th}`]);
-    const noActivate = bool(args.noActivate);
-    if (state0 === 'maximized' || (w >= 0.98 && h >= 0.98 && x <= 0.02 && y <= 0.02)) {
+    if (isMax) {
       await wm(['-i', '-r', id, '-b', 'add,maximized_vert,maximized_horz']);
       if (!noActivate) await wm(['-i', '-a', id]);
       return { snapped: true, hwnd, state: 'maximized', monitorIndex };
@@ -514,6 +877,15 @@ function createDesktop(sys) {
   async function focusWindow(args) {
     const hwnd = num(args.hwnd, 0);
     if (!hwnd) return { ok: false };
+    const backend = detectWindowBackend();
+    if (backend === 'hyprctl') {
+      const r = await sys.exec('hyprctl', ['dispatch', 'focuswindow', hyprTarget(hwnd)], { timeout: 3000 });
+      return { ok: r.code === 0 };
+    }
+    if (backend === 'swaymsg' || backend === 'i3-msg') {
+      const r = await sys.exec(backend, [`[con_id=${hwnd}] focus`], { timeout: 3000 });
+      return { ok: r.code === 0 };
+    }
     const r = await wm(['-i', '-a', hexId(hwnd)]); // also de-iconifies
     return { ok: r.code === 0 };
   }
@@ -521,15 +893,31 @@ function createDesktop(sys) {
   async function closeWindow(args) {
     const hwnd = num(args.hwnd, 0);
     if (!hwnd) return { ok: false };
+    const backend = detectWindowBackend();
+    if (backend === 'hyprctl') {
+      const r = await sys.exec('hyprctl', ['dispatch', 'closewindow', hyprTarget(hwnd)], { timeout: 3000 });
+      return { ok: r.code === 0 };
+    }
+    if (backend === 'swaymsg' || backend === 'i3-msg') {
+      const r = await sys.exec(backend, [`[con_id=${hwnd}] kill`], { timeout: 3000 });
+      return { ok: r.code === 0 };
+    }
     const r = await wm(['-i', '-c', hexId(hwnd)]); // graceful, like WM_CLOSE
     return { ok: r.code === 0 };
   }
 
   async function windowPid(hwnd) {
-    const r = await wm(['-lp']).catch(() => null);
-    if (!r) return 0;
-    const line = r.stdout.split('\n').find((l) => l.trim() && parseInt(l.split(/\s+/)[0], 16) === hwnd);
-    return line ? Number(line.trim().split(/\s+/)[2]) || 0 : 0;
+    const wins = await getWindows().catch(() => []);
+    const hit = wins.find((w) => w.hwnd === hwnd);
+    if (hit && hit.pid) return hit.pid;
+    if (sys.has('wmctrl')) {
+      const r = await wm(['-lp']).catch(() => null);
+      if (r) {
+        const line = r.stdout.split('\n').find((l) => l.trim() && parseInt(l.split(/\s+/)[0], 16) === hwnd);
+        if (line) return Number(line.trim().split(/\s+/)[2]) || 0;
+      }
+    }
+    return 0;
   }
 
   async function windowAction(args) {
@@ -537,21 +925,48 @@ function createDesktop(sys) {
     const action = String(args.action || 'focus');
     if (!hwnd) return { ok: false };
     const id = hexId(hwnd);
+    const backend = detectWindowBackend();
     switch (action) {
       case 'minimize':
+        if (backend === 'hyprctl') {
+          await sys.exec('hyprctl', ['dispatch', 'movetoworkspacesilent', `special:minimized,${hyprTarget(hwnd)}`], { timeout: 3000 });
+          return { ok: true, action };
+        }
+        if (backend === 'swaymsg' || backend === 'i3-msg') {
+          await sys.exec(backend, [`[con_id=${hwnd}] move scratchpad`], { timeout: 3000 });
+          return { ok: true, action };
+        }
         if (!sys.has('xdotool')) throw new Error(missingToolMessage('xdotool'));
         await sys.exec('xdotool', ['windowminimize', String(hwnd)], { timeout: 3000 });
         return { ok: true, action };
       case 'maximize':
+        if (backend === 'hyprctl') {
+          await sys.exec('hyprctl', ['dispatch', 'focuswindow', hyprTarget(hwnd)], { timeout: 3000 });
+          await sys.exec('hyprctl', ['dispatch', 'fullscreen', '1'], { timeout: 3000 });
+          return { ok: true, action };
+        }
+        if (backend === 'swaymsg' || backend === 'i3-msg') {
+          await sys.exec(backend, [`[con_id=${hwnd}] fullscreen enable, focus`], { timeout: 3000 });
+          return { ok: true, action };
+        }
         await wm(['-i', '-r', id, '-b', 'add,maximized_vert,maximized_horz']);
         await wm(['-i', '-a', id]);
         return { ok: true, action };
       case 'restore':
+        if (backend === 'hyprctl') {
+          await sys.exec('hyprctl', ['dispatch', 'focuswindow', hyprTarget(hwnd)], { timeout: 3000 });
+          await sys.exec('hyprctl', ['dispatch', 'fullscreen', '0'], { timeout: 3000 });
+          return { ok: true, action };
+        }
+        if (backend === 'swaymsg' || backend === 'i3-msg') {
+          await sys.exec(backend, [`[con_id=${hwnd}] fullscreen disable, floating disable, focus`], { timeout: 3000 });
+          return { ok: true, action };
+        }
         await wm(['-i', '-r', id, '-b', 'remove,maximized_vert,maximized_horz,fullscreen']);
         await wm(['-i', '-a', id]);
         return { ok: true, action };
       case 'close':
-        await wm(['-i', '-c', id]);
+        await closeWindow({ hwnd });
         return { ok: true, action };
       case 'move_to_monitor': {
         const wins = await getWindows().catch(() => []);
@@ -572,6 +987,15 @@ function createDesktop(sys) {
         return snapWindow({ hwnd, monitorIndex: num(args.monitorIndex, 0), state: z.state, x: z.x, y: z.y, w: z.w, h: z.h });
       }
       case 'toggle_topmost': {
+        if (backend === 'hyprctl') {
+          await sys.exec('hyprctl', ['dispatch', 'pin', hyprTarget(hwnd)], { timeout: 3000 });
+          return { ok: true, action, isTopMost: Boolean(args.topMost ?? true) };
+        }
+        if (backend === 'swaymsg' || backend === 'i3-msg') {
+          const next = args.topMost !== undefined ? bool(args.topMost) : true;
+          await sys.exec(backend, [`[con_id=${hwnd}] floating enable, sticky ${next ? 'enable' : 'disable'}`], { timeout: 3000 });
+          return { ok: true, action, isTopMost: next };
+        }
         let next;
         if (args.topMost !== undefined) next = bool(args.topMost);
         else {
@@ -583,8 +1007,17 @@ function createDesktop(sys) {
       }
       case 'set_opacity': {
         const pct = clamp(Math.round(num(args.opacity, 100)), 25, 100);
+        if (backend === 'hyprctl') {
+          const alpha = (pct / 100).toFixed(2);
+          await sys.exec('hyprctl', ['dispatch', 'setprop', `${hyprTarget(hwnd)} alpha ${alpha} lock`], { timeout: 2000 });
+          return { ok: true, action, opacity: pct };
+        }
+        if (backend === 'swaymsg') {
+          const alpha = (pct / 100).toFixed(2);
+          await sys.exec('swaymsg', [`[con_id=${hwnd}] opacity ${alpha}`], { timeout: 2000 });
+          return { ok: true, action, opacity: pct };
+        }
         if (!sys.has('xprop')) throw new Error(missingToolMessage('xprop'));
-        // Needs a compositing window manager to be visible
         await sys.exec('xprop', ['-id', id, '-f', '_NET_WM_WINDOW_OPACITY', '32c', '-set', '_NET_WM_WINDOW_OPACITY', String(Math.round((pct / 100) * 0xffffffff))], { timeout: 2000 });
         return { ok: true, action, opacity: pct };
       }
@@ -937,7 +1370,6 @@ function createDesktop(sys) {
       const z = explicitZone ? resolveZoneRect(zone) : { x: 0, y: 0, w: 1, h: 1, state: 'maximized' };
       await snapWindow({ hwnd, processName: procName, monitorIndex: monitorIndex >= 0 ? monitorIndex : 0, state: z.state, x: z.x, y: z.y, w: z.w, h: z.h }).catch(() => {});
     } else if (monitorIndex >= 0) {
-      // Keep the app's own size, centre it on the requested monitor
       const wins = await getWindows().catch(() => []);
       const cur = wins.find((w) => w.hwnd === hwnd);
       const mons = await getMonitors(2500).catch(() => []);
@@ -945,10 +1377,17 @@ function createDesktop(sys) {
       if (cur && mon) {
         const nx = mon.workX + Math.max(0, Math.round((mon.workWidth - cur.rect.width) / 2));
         const ny = mon.workY + Math.max(0, Math.round((mon.workHeight - cur.rect.height) / 2));
-        await wm(['-i', '-r', hexId(hwnd), '-e', `0,${nx},${ny},-1,-1`]).catch(() => {});
+        const backend = detectWindowBackend();
+        if (backend === 'hyprctl') {
+          await sys.exec('hyprctl', ['dispatch', 'movewindowpixel', `exact ${nx} ${ny},${hyprTarget(hwnd)}`], { timeout: 3000 }).catch(() => {});
+        } else if (backend === 'swaymsg' || backend === 'i3-msg') {
+          await sys.exec(backend, [`[con_id=${hwnd}] floating enable, move position ${nx} ${ny}`], { timeout: 3000 }).catch(() => {});
+        } else {
+          await wm(['-i', '-r', hexId(hwnd), '-e', `0,${nx},${ny},-1,-1`]).catch(() => {});
+        }
       }
     }
-    if (alwaysOnTop) await wm(['-i', '-r', hexId(hwnd), '-b', 'add,above']).catch(() => {});
+    if (alwaysOnTop) await windowAction({ hwnd, action: 'toggle_topmost', topMost: true }).catch(() => {});
   }
 
   return {

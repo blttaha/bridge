@@ -1019,6 +1019,158 @@ test('capture_screen: shape, scaling, cursor normalization', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Wayland & Multi-Compositor Compatibility Tests
+// ---------------------------------------------------------------------------
+const { detectGraphicalSession } = require('../../pc-agent/linux/util');
+
+test('wayland session detection: Hyprland, Sway, KDE, GNOME, wlroots, X11', () => {
+  const hypr = detectGraphicalSession({ XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', HYPRLAND_INSTANCE_SIGNATURE: 'abc' }, null);
+  assert.deepStrictEqual([hypr.isWayland, hypr.sessionType, hypr.compositor], [true, 'wayland', 'hyprland']);
+  const sway = detectGraphicalSession({ WAYLAND_DISPLAY: 'wayland-0', SWAYSOCK: '/run/user/1000/sway.sock' }, null);
+  assert.deepStrictEqual([sway.isWayland, sway.compositor], [true, 'sway']);
+  const kde = detectGraphicalSession({ XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'KDE' }, null);
+  assert.deepStrictEqual([kde.isWayland, kde.compositor], [true, 'kde']);
+  const gnome = detectGraphicalSession({ XDG_SESSION_TYPE: 'wayland', XDG_CURRENT_DESKTOP: 'ubuntu:GNOME' }, null);
+  assert.deepStrictEqual([gnome.isWayland, gnome.compositor], [true, 'gnome']);
+  const x11 = detectGraphicalSession({ XDG_SESSION_TYPE: 'x11', DISPLAY: ':0', XDG_CURRENT_DESKTOP: 'XFCE' }, null);
+  assert.deepStrictEqual([x11.isWayland, x11.compositor], [false, 'xfce']);
+});
+
+test('wayland monitor parsers: Hyprland, Sway, KDE kscreen-doctor, wlr-randr', () => {
+  const hyprMons = P.parseHyprMonitors(
+    JSON.stringify([
+      { id: 0, name: 'eDP-1', width: 1920, height: 1080, x: 0, y: 0, scale: 1, focused: true, reserved: [0, 32, 0, 0] },
+      { id: 1, name: 'HDMI-A-1', width: 3840, height: 2160, x: 1920, y: 0, scale: 2, focused: false, reserved: [0, 0, 0, 0] }
+    ])
+  );
+  assert.strictEqual(hyprMons.outputs.length, 2);
+  assert.deepStrictEqual([hyprMons.outputs[0].name, hyprMons.outputs[0].workY, hyprMons.outputs[0].workHeight], ['eDP-1', 32, 1048]);
+  assert.deepStrictEqual([hyprMons.outputs[1].name, hyprMons.outputs[1].width, hyprMons.outputs[1].height], ['HDMI-A-1', 1920, 1080]);
+
+  const swayMons = P.parseSwayOutputs(
+    JSON.stringify([
+      { name: 'DP-1', active: true, focused: true, rect: { x: 0, y: 0, width: 2560, height: 1440 } },
+      { name: 'HDMI-1', active: false, rect: { x: 0, y: 0, width: 0, height: 0 } }
+    ])
+  );
+  assert.deepStrictEqual([swayMons.outputs[0].name, swayMons.outputs[0].width, swayMons.inactive], ['DP-1', 2560, ['HDMI-1']]);
+
+  const kscreenMons = P.parseKscreenMonitors(
+    JSON.stringify({
+      outputs: [
+        { name: 'eDP-1', connected: true, enabled: true, primary: true, pos: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } },
+        { name: 'DP-2', connected: true, enabled: false }
+      ]
+    })
+  );
+  assert.deepStrictEqual([kscreenMons.outputs[0].name, kscreenMons.inactive], ['eDP-1', ['DP-2']]);
+
+  const wlrMons = P.parseWlrRandr(`eDP-1 "Monitor 1"\n  Enabled: yes\n  Modes:\n    1920x1080 px, 60.00 Hz (preferred, current)\n  Position: 0,0\nHDMI-A-1 "Monitor 2"\n  Enabled: no\n`);
+  assert.deepStrictEqual([wlrMons.outputs[0].name, wlrMons.outputs[0].width, wlrMons.inactive], ['eDP-1', 1920, ['HDMI-A-1']]);
+});
+
+test('wayland desktop: Hyprland and Sway monitors, topology, and windows', async () => {
+  const hyprClientsJson = JSON.stringify([
+    { address: '0x55aabb1122', mapped: true, title: 'Kitty Terminal', class: 'kitty', pid: 4001, at: [20, 50], size: [900, 600], fullscreen: 0, pinned: false, focusHistoryID: 1, workspace: { name: '1' } },
+    { address: '0x55aabb3344', mapped: true, title: 'Firefox', class: 'firefox', pid: 4002, at: [0, 0], size: [1920, 1080], fullscreen: 1, pinned: true, focusHistoryID: 0, workspace: { name: '1' } }
+  ]);
+  const hyprMonsJson = JSON.stringify([
+    { id: 0, name: 'eDP-1', width: 1920, height: 1080, x: 0, y: 0, scale: 1, focused: true, reserved: [0, 0, 0, 0] },
+    { id: 1, name: 'HDMI-A-1', width: 1920, height: 1080, x: 1920, y: 0, scale: 1, focused: false, reserved: [0, 0, 0, 0] }
+  ]);
+  const sys = createMockSys({
+    env: { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', HYPRLAND_INSTANCE_SIGNATURE: 'sig1' },
+    tools: ['hyprctl'],
+    responders: [
+      ['hyprctl -j monitors all', { stdout: hyprMonsJson }],
+      ['hyprctl -j clients', { stdout: hyprClientsJson }]
+    ]
+  });
+  const d = createDesktop(sys);
+  const mons = await d.getMonitors();
+  assert.strictEqual(mons.length, 2);
+  assert.strictEqual(mons[0].deviceName, 'eDP-1');
+  await d.displayTopology({ mode: 'clone' });
+  assert.ok(sys.calls.some((c) => c.line.includes('hyprctl keyword monitor HDMI-A-1,preferred,auto,1,mirror,eDP-1')));
+
+  const wins = await d.getWindows();
+  assert.strictEqual(wins.length, 2);
+  assert.strictEqual(wins[0].title, 'Firefox');
+  assert.strictEqual(wins[0].state, 'maximized');
+  assert.strictEqual(wins[0].isTopMost, true);
+  await d.focusWindow({ hwnd: wins[1].hwnd });
+  assert.ok(sys.calls.some((c) => c.line === 'hyprctl dispatch focuswindow address:0x55aabb1122'));
+  await d.closeWindow({ hwnd: wins[1].hwnd });
+  assert.ok(sys.calls.some((c) => c.line === 'hyprctl dispatch closewindow address:0x55aabb1122'));
+});
+
+test('wayland input: ydotool / wtype / hyprctl + key_down / key_up / mouse macro tokens', async () => {
+  const sys = createMockSys({
+    env: { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1', HYPRLAND_INSTANCE_SIGNATURE: 'sig1' },
+    tools: ['hyprctl', 'ydotool', 'wtype'],
+    responders: [['hyprctl cursorpos', { stdout: '400, 300\n' }]]
+  });
+  const xdo = new Xdo(sys);
+  await xdo.start();
+  assert.strictEqual(xdo.mode, 'wayland');
+  const inp = new InputController(sys, xdo, bounds);
+  await inp.handle({ type: 'mouse_move_abs', x: 0.5, y: 0.5, monitorIndex: 0 });
+  await inp.handle({ type: 'key_down', key: 'SHIFT+W' });
+  await inp.handle({ type: 'key_up', key: 'SHIFT+W' });
+  await inp.handle({ type: 'key_down', key: 'MOUSE_LEFT' });
+  await inp.handle({ type: 'key_up', key: 'MOUSE_LEFT' });
+  await inp.handle({ type: 'text', text: 'Wayland Test' });
+  await tick(30);
+  const lines = sys.calls.map((c) => c.line);
+  assert.ok(lines.includes('hyprctl dispatch movecursor 960 720'));
+  assert.ok(lines.includes('wtype -M shift -P w'));
+  assert.ok(lines.includes('wtype -p w -m shift'));
+  assert.ok(lines.includes('ydotool click 0x40'));
+  assert.ok(lines.includes('ydotool click 0x80'));
+  assert.ok(lines.includes('wtype -- Wayland Test'));
+});
+
+test('wayland clipboard & audio: wl-copy / wl-paste and PipeWire wpctl fallback', async () => {
+  let wlClip = 'wayland pano';
+  const sys = createMockSys({
+    env: { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-0', TAHABLT_DATA_DIR: '/data' },
+    tools: ['wl-copy', 'wl-paste', 'wpctl'],
+    responders: [
+      ['wl-paste --no-newline', () => ({ stdout: wlClip })],
+      ['wl-copy', (c, a, o) => ((wlClip = String(o.input)), {})],
+      ['wpctl get-volume @DEFAULT_AUDIO_SINK@', { stdout: 'Volume: 0.75\n' }],
+      ['wpctl get-volume @DEFAULT_AUDIO_SOURCE@', { stdout: 'Volume: 0.50 [MUTED]\n' }]
+    ]
+  });
+  const s = createSystem(sys, createDesktop(sys), { handle: async () => {} });
+  const c1 = await s.systemControl({ action: 'get_clipboard' });
+  assert.strictEqual(c1.text, 'wayland pano');
+  await s.systemControl({ action: 'set_clipboard', text: 'yeni wayland' });
+  assert.strictEqual(wlClip, 'yeni wayland');
+
+  const a = await s.audioControl({ action: 'get' });
+  assert.deepStrictEqual([a.masterVolume, a.masterMuted, a.micVolume, a.micMuted, a.hasMic], [75, false, 50, true, true]);
+  await s.audioControl({ action: 'set_master', volume: 40, muted: true });
+  const lines = sys.calls.map((c) => c.line);
+  assert.ok(lines.includes('wpctl set-volume @DEFAULT_AUDIO_SINK@ 40%'));
+  assert.ok(lines.includes('wpctl set-mute @DEFAULT_AUDIO_SINK@ 1'));
+});
+
+test('wayland screen capture: grim JPEG capture and wf-recorder args', async () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  const sys = createMockSys({
+    env: { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-1' },
+    tools: ['grim'],
+    responders: [[(c) => c === 'grim', { stdoutBuf: jpeg }]]
+  });
+  const r = await stream.captureScreen(sys, async () => ({ x: 0, y: 0, width: 1920, height: 1080 }), async () => ({ x: 960, y: 540 }), { monitorIndex: 0, maxWidth: 1920, quality: 80 });
+  assert.strictEqual(r.jpeg, jpeg.toString('base64'));
+  assert.ok(sys.calls.some((c) => c.cmd === 'grim'));
+  const wfArgs = stream.buildWfRecorderArgs({ mon: { deviceName: 'eDP-1', x: 0, y: 0, width: 1920, height: 1080 }, fps: 60, videoW: 1920, videoH: 1080, vaapi: false }).join(' ');
+  assert.ok(wfArgs.includes('-o eDP-1') && wfArgs.includes('-c libx264') && wfArgs.includes('--file=pipe:1'));
+});
+
+// ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
 const after = [];

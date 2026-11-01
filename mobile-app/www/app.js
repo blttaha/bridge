@@ -7261,7 +7261,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.9';
+    let currentAppVer = '2.20.0';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();

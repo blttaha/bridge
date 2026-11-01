@@ -7,8 +7,8 @@ PartOf=graphical-session.target
 ExecStart=@NODE_BIN@ @APP_DIR@/server.js
 Restart=on-failure
 RestartSec=3
-# The bridge needs the desktop session's display and audio
-PassEnvironment=DISPLAY XAUTHORITY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS XDG_SESSION_TYPE
+# The bridge needs the desktop session's display (X11 & Wayland), compositor sockets, and audio
+PassEnvironment=DISPLAY WAYLAND_DISPLAY XAUTHORITY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DESKTOP_SESSION HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK I3SOCK
 
 [Install]
 WantedBy=graphical-session.target default.target

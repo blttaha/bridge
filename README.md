@@ -42,7 +42,7 @@
 1. Run [`Bridge-Setup.exe`](Bridge-Setup.exe).
 2. Once installed, the **Bridge** icon starts automatically in the Windows system tray.
 
-#### Linux (X11)
+#### Linux (Wayland & X11 — GNOME, KDE Plasma, Hyprland, Sway, wlroots, i3, XFCE, Cinnamon, MATE)
 
 ```bash
 mkdir bridge && tar -xzf Bridge-Linux.tar.gz -C bridge
@@ -101,7 +101,7 @@ node linux\build-package.js
 │   ├── server.js             HTTP / WebSocket server and session manager
 │   ├── installer.iss         Inno Setup installer script
 │   ├── native/               Windows C# / Win32 / DXGI / WASAPI native components
-│   └── linux/                Linux X11 / PulseAudio / systemd components
+│   └── linux/                Linux Wayland & X11 / PipeWire & PulseAudio / systemd components
 └── mobile-app/
     ├── android/              Android native shell, media notification, and Quick Settings tiles
     └── www/                  Mobile web UI layer
@@ -136,7 +136,7 @@ node linux\build-package.js
 1. [`Bridge-Setup.exe`](Bridge-Setup.exe) kurulum paketini çalıştırın.
 2. Kurulum tamamlandığında sistem tepsisinde (sağ alt görev çubuğu) **Bridge** simgesi otomatik olarak çalışmaya başlar.
 
-#### Linux (X11)
+#### Linux (Wayland & X11 — GNOME, KDE Plasma, Hyprland, Sway, wlroots, i3, XFCE, Cinnamon, MATE)
 
 ```bash
 mkdir bridge && tar -xzf Bridge-Linux.tar.gz -C bridge
@@ -195,7 +195,7 @@ node linux\build-package.js
 │   ├── server.js             HTTP / WebSocket sunucusu ve oturum yönetimi
 │   ├── installer.iss         Inno Setup kurulum betiği
 │   ├── native/               Windows C# / Win32 / DXGI / WASAPI bileşenleri
-│   └── linux/                Linux X11 / PulseAudio / systemd bileşenleri
+│   └── linux/                Linux Wayland ve X11 / PipeWire ve PulseAudio / systemd bileşenleri
 └── mobile-app/
     ├── android/              Android yerel kabuğu, bildirim ve Hızlı Ayarlar servisleri
     └── www/                  Mobil arayüz katmanı

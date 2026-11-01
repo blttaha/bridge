@@ -71,10 +71,9 @@ function main() {
   process.on('uncaughtException', (e) => sys.log('beklenmeyen hata:', (e && e.stack) || e));
   process.on('unhandledRejection', (e) => sys.log('beklenmeyen hata:', (e && e.message) || e));
 
-  if (!sys.env.DISPLAY) sys.log('DISPLAY ayarlı değil, :0 varsayılıyor');
-  if (sys.env.WAYLAND_DISPLAY && sys.env.XDG_SESSION_TYPE === 'wayland') {
-    sys.log('Wayland oturumu: ekran yakalama ve giriş yalnızca XWayland uygulamalarında çalışabilir');
-  }
+  const sess = typeof sys.session === 'function' ? sys.session() : { sessionType: 'x11', compositor: 'x11' };
+  if (!sys.env.DISPLAY && !sess.isWayland) sys.log('DISPLAY ayarlı değil, :0 varsayılıyor');
+  sys.log(`Grafik oturumu: ${sess.sessionType} (${sess.compositor})`);
   if (ipcKey.length < 32) sys.log('TAHABLT_IPC_KEY eksik/kısa: giriş ve yayın portları bağlantı kabul etmeyecek');
 
   const bridge = createBridge(sys);

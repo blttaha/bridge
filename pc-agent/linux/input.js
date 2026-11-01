@@ -1,44 +1,68 @@
 'use strict';
-// Mouse / keyboard injection through xdotool, plus the send_input command (same arguments and replies as
-// SendInputCommand() in BridgeHelper.cs) and the touch-to-mouse emulation of TouchInjector.cs.
+// Mouse / keyboard injection across X11 (xdotool) and Wayland compositors (ydotool, hyprctl, swaymsg,
+// wlrctl, wtype, dotool), plus the send_input command (same arguments and replies as SendInputCommand()
+// in BridgeHelper.cs) and the touch-to-mouse emulation of TouchInjector.cs.
 
-const { parseMouseLocation, mapKeyCombo } = require('./parsers');
-const { clamp, num, bool, missingToolMessage } = require('./util');
+const { parseMouseLocation, mapKeyCombo, mapYdotoolKeys, mapWtypeArgs } = require('./parsers');
+const { getSession, clamp, num, bool, missingToolMessage } = require('./util');
 
 // ---------------------------------------------------------------------------
-// xdotool driver
+// xdotool + Wayland multi-backend driver
 // ---------------------------------------------------------------------------
-// Preferred: ONE long-lived "xdotool -" reading commands from stdin (no fork per mouse move). Some xdotool
-// builds only run a script after EOF, so at start-up a getmouselocation probe must answer within 600 ms;
-// otherwise every command is spawned on its own (with pending absolute moves coalesced).
+// Preferred on X11: ONE long-lived "xdotool -" reading commands from stdin (no fork per mouse move).
+// On Wayland: automatically routes through compositor/uinput tools (hyprctl, swaymsg, ydotool, wlrctl,
+// wtype, dotool) when xdotool is unavailable or when native Wayland input tools are present.
 class Xdo {
   constructor(sys) {
     this.sys = sys;
-    this.mode = 'unknown'; // 'pipe' | 'spawn' | 'missing'
+    this.mode = 'unknown'; // 'pipe' | 'spawn' | 'wayland' | 'missing'
     this.proc = null;
     this.waiters = []; // getmouselocation replies in pipe mode, FIFO
-    this.queue = []; // spawn mode
+    this.queue = []; // spawn / wayland mode
     this.running = false;
     this.restarts = 0;
     this.ready = null;
   }
 
+  hasWaylandTool() {
+    const sess = getSession(this.sys);
+    if (!sess.isWayland) return false;
+    return (
+      this.sys.has('ydotool') ||
+      this.sys.has('wlrctl') ||
+      this.sys.has('wtype') ||
+      this.sys.has('dotool') ||
+      (sess.compositor === 'hyprland' && this.sys.has('hyprctl')) ||
+      (sess.compositor === 'sway' && this.sys.has('swaymsg'))
+    );
+  }
+
   available() {
-    return this.sys.has('xdotool');
+    return this.sys.has('xdotool') || this.hasWaylandTool();
   }
 
   start() {
     if (this.ready) return this.ready;
+    const sess = getSession(this.sys);
+    if (sess.isWayland && this.hasWaylandTool() && !this.sys.has('xdotool')) {
+      this.mode = 'wayland';
+      this.ready = Promise.resolve();
+      return this.ready;
+    }
     this.ready = this._startPipe().catch(() => {
-      this.mode = this.available() ? 'spawn' : 'missing';
+      if (sess.isWayland && this.hasWaylandTool()) {
+        this.mode = 'wayland';
+      } else {
+        this.mode = this.sys.has('xdotool') ? 'spawn' : this.hasWaylandTool() ? 'wayland' : 'missing';
+      }
     });
     return this.ready;
   }
 
   _startPipe() {
     return new Promise((resolve, reject) => {
-      if (!this.available()) {
-        this.mode = 'missing';
+      if (!this.sys.has('xdotool')) {
+        this.mode = this.hasWaylandTool() ? 'wayland' : 'missing';
         return resolve();
       }
       let proc;
@@ -107,6 +131,8 @@ class Xdo {
 
   _ensure() {
     if (this.mode === 'missing' || (!this.available() && this.mode !== 'pipe')) {
+      const sess = getSession(this.sys);
+      if (sess.isWayland) throw new Error(missingToolMessage('ydotool'));
       throw new Error(missingToolMessage('xdotool'));
     }
   }
@@ -114,7 +140,9 @@ class Xdo {
   // args: xdotool argv, e.g. ['mousemove', '--', '10', '20']
   run(args) {
     this._ensure();
-    if (this.mode === 'pipe' && this.proc && this.proc.stdin.writable) {
+    const sess = getSession(this.sys);
+    const preferWayland = this.mode === 'wayland' || (sess.isWayland && this.hasWaylandTool());
+    if (!preferWayland && this.mode === 'pipe' && this.proc && this.proc.stdin.writable) {
       // script mode splits on whitespace: only used for commands whose arguments never contain spaces
       this.proc.stdin.write(args.join(' ') + '\n');
       return;
@@ -128,13 +156,119 @@ class Xdo {
     this._drain();
   }
 
+  async _execWaylandCommand(args) {
+    const sess = getSession(this.sys);
+    const cmd = args[0];
+
+    // 1. Absolute mouse move: ['mousemove', '--', x, y]
+    if (cmd === 'mousemove') {
+      const x = args[args.length - 2];
+      const y = args[args.length - 1];
+      if (sess.compositor === 'hyprland' && this.sys.has('hyprctl')) {
+        const r = await this.sys.exec('hyprctl', ['dispatch', 'movecursor', `${x} ${y}`], { timeout: 2000 }).catch(() => null);
+        if (r && r.code === 0) return true;
+      }
+      if (sess.compositor === 'sway' && this.sys.has('swaymsg')) {
+        const r = await this.sys.exec('swaymsg', ['seat', '-', 'cursor', 'set', String(x), String(y)], { timeout: 2000 }).catch(() => null);
+        if (r && r.code === 0) return true;
+      }
+      if (this.sys.has('ydotool')) {
+        const r = await this.sys.exec('ydotool', ['mousemove', '--absolute', '-x', String(x), '-y', String(y)], { timeout: 2000 }).catch(() => null);
+        if (r && r.code === 0) return true;
+      }
+      return false;
+    }
+
+    // 2. Mouse click / wheel / mousedown / mouseup
+    if (cmd === 'click' || cmd === 'mousedown' || cmd === 'mouseup') {
+      const btnArg = args[args.length - 1];
+      const repeatIdx = args.indexOf('--repeat');
+      const repeat = repeatIdx >= 0 ? Number(args[repeatIdx + 1]) || 1 : 1;
+
+      // Wheel scroll via buttons 4/5/6/7
+      if (cmd === 'click' && (btnArg === '4' || btnArg === '5' || btnArg === '6' || btnArg === '7')) {
+        if (this.sys.has('ydotool')) {
+          const dy = btnArg === '4' ? repeat : btnArg === '5' ? -repeat : 0;
+          const dx = btnArg === '7' ? repeat : btnArg === '6' ? -repeat : 0;
+          const r = await this.sys.exec('ydotool', ['mousemove', '--wheel', '-x', String(dx), '-y', String(dy)], { timeout: 2000 }).catch(() => null);
+          if (r && r.code === 0) return true;
+        }
+        if (sess.compositor === 'sway' && this.sys.has('swaymsg')) {
+          const swayBtn = `button${btnArg}`;
+          for (let i = 0; i < repeat; i++) {
+            await this.sys.exec('swaymsg', ['seat', '-', 'cursor', 'press', swayBtn], { timeout: 1500 }).catch(() => {});
+            await this.sys.exec('swaymsg', ['seat', '-', 'cursor', 'release', swayBtn], { timeout: 1500 }).catch(() => {});
+          }
+          return true;
+        }
+        return false;
+      }
+
+      // Mouse buttons 1 (left), 2 (middle), 3 (right)
+      const ydoBase = btnArg === '3' ? 0x01 : btnArg === '2' ? 0x02 : 0x00;
+      const ydoFlags = cmd === 'mousedown' ? 0x40 : cmd === 'mouseup' ? 0x80 : 0xc0;
+      if (this.sys.has('ydotool')) {
+        const hexCode = '0x' + (ydoBase | ydoFlags).toString(16);
+        const yArgs = ['click', ...(repeat > 1 ? ['--repeat', String(repeat)] : []), hexCode];
+        const r = await this.sys.exec('ydotool', yArgs, { timeout: 2000 }).catch(() => null);
+        if (r && r.code === 0) return true;
+      }
+      if (this.sys.has('wlrctl') && cmd === 'click') {
+        const wBtn = btnArg === '3' ? 'right' : btnArg === '2' ? 'middle' : 'left';
+        for (let i = 0; i < repeat; i++) {
+          await this.sys.exec('wlrctl', ['pointer', 'click', wBtn], { timeout: 2000 }).catch(() => {});
+        }
+        return true;
+      }
+      if (sess.compositor === 'sway' && this.sys.has('swaymsg')) {
+        const swayBtn = `button${btnArg}`;
+        for (let i = 0; i < repeat; i++) {
+          if (cmd !== 'mouseup') await this.sys.exec('swaymsg', ['seat', '-', 'cursor', 'press', swayBtn], { timeout: 1500 }).catch(() => {});
+          if (cmd !== 'mousedown') await this.sys.exec('swaymsg', ['seat', '-', 'cursor', 'release', swayBtn], { timeout: 1500 }).catch(() => {});
+        }
+        return true;
+      }
+      return false;
+    }
+
+    // 3. Keyboard key / keydown / keyup
+    if (cmd === 'key' || cmd === 'keydown' || cmd === 'keyup') {
+      const rawCombo = args[args.length - 1];
+      const action = cmd === 'keydown' ? 'down' : cmd === 'keyup' ? 'up' : 'tap';
+      if (this.sys.has('wtype')) {
+        const wArgs = mapWtypeArgs(rawCombo, action);
+        if (wArgs.length) {
+          const r = await this.sys.exec('wtype', wArgs, { timeout: 2000 }).catch(() => null);
+          if (r && r.code === 0) return true;
+        }
+      }
+      if (this.sys.has('ydotool')) {
+        const yKeys = mapYdotoolKeys(rawCombo, action);
+        if (yKeys.length) {
+          const r = await this.sys.exec('ydotool', ['key', ...yKeys], { timeout: 2000 }).catch(() => null);
+          if (r && r.code === 0) return true;
+        }
+      }
+      return false;
+    }
+
+    return false;
+  }
+
   async _drain() {
     if (this.running) return;
     this.running = true;
     try {
       while (this.queue.length) {
         const args = this.queue.shift();
-        await this.sys.exec('xdotool', args, { timeout: 3000 }).catch(() => {});
+        const sess = getSession(this.sys);
+        if (this.mode === 'wayland' || (sess.isWayland && this.hasWaylandTool())) {
+          const handled = await this._execWaylandCommand(args);
+          if (handled) continue;
+        }
+        if (this.sys.has('xdotool')) {
+          await this.sys.exec('xdotool', args, { timeout: 3000 }).catch(() => {});
+        }
       }
     } finally {
       this.running = false;
@@ -144,10 +278,39 @@ class Xdo {
   // Free-text typing always gets its own process (arguments with spaces / unicode)
   async type(text) {
     this._ensure();
-    await this.sys.exec('xdotool', ['type', '--clearmodifiers', '--delay', '4', '--', text], { timeout: 15000 });
+    const sess = getSession(this.sys);
+    if (sess.isWayland) {
+      if (this.sys.has('wtype')) {
+        const r = await this.sys.exec('wtype', ['--', text], { timeout: 15000 }).catch(() => null);
+        if (r && r.code === 0) return;
+      }
+      if (this.sys.has('wlrctl')) {
+        const r = await this.sys.exec('wlrctl', ['keyboard', 'type', text], { timeout: 15000 }).catch(() => null);
+        if (r && r.code === 0) return;
+      }
+      if (this.sys.has('ydotool')) {
+        const r = await this.sys.exec('ydotool', ['type', '--key-delay', '4', '--', text], { timeout: 15000 }).catch(() => null);
+        if (r && r.code === 0) return;
+      }
+      if (this.sys.has('dotool')) {
+        const r = await this.sys.exec('dotool', [], { input: `type ${text}\n`, timeout: 15000 }).catch(() => null);
+        if (r && r.code === 0) return;
+      }
+    }
+    if (this.sys.has('xdotool')) {
+      await this.sys.exec('xdotool', ['type', '--clearmodifiers', '--delay', '4', '--', text], { timeout: 15000 });
+    }
   }
 
   async getMouseLocation() {
+    const sess = getSession(this.sys);
+    if (sess.isWayland && sess.compositor === 'hyprland' && this.sys.has('hyprctl')) {
+      const r = await this.sys.exec('hyprctl', ['cursorpos'], { timeout: 1500 }).catch(() => null);
+      if (r && r.code === 0) {
+        const loc = parseMouseLocation(r.stdout);
+        if (loc) return loc;
+      }
+    }
     if (this.mode === 'pipe' && this.proc && this.proc.stdin.writable) {
       return new Promise((resolve) => {
         const t = setTimeout(() => resolve(null), 800);
@@ -158,7 +321,7 @@ class Xdo {
         this.proc.stdin.write('getmouselocation\n');
       });
     }
-    if (!this.available()) return null;
+    if (!this.sys.has('xdotool')) return null;
     const r = await this.sys.exec('xdotool', ['getmouselocation'], { timeout: 1500 }).catch(() => null);
     return r ? parseMouseLocation(r.stdout) : null;
   }
@@ -199,7 +362,7 @@ class InputController {
     this.chain = Promise.resolve();
   }
 
-  // Cached cursor position; refreshed from X when older than 400 ms (the user may move the real mouse)
+  // Cached cursor position; refreshed from X/compositor when older than 400 ms
   async cursorPos() {
     if (this.sys.now() - this.cursor.ts > 400) {
       const loc = await this.xdo.getMouseLocation();
@@ -231,6 +394,27 @@ class InputController {
     const run = this.chain.then(() => this._handle(args || {}));
     this.chain = run.catch(() => {});
     return run;
+  }
+
+  _handleMouseToken(token, mode) {
+    const t = String(token || '').toUpperCase();
+    if (t === 'MOUSE_LEFT' || t === 'LBUTTON' || t === 'MOUSE_LCLICK') {
+      this.xdo.run([mode === 'down' ? 'mousedown' : mode === 'up' ? 'mouseup' : 'click', '1']);
+      return true;
+    }
+    if (t === 'MOUSE_RIGHT' || t === 'RBUTTON' || t === 'MOUSE_RCLICK') {
+      this.xdo.run([mode === 'down' ? 'mousedown' : mode === 'up' ? 'mouseup' : 'click', '3']);
+      return true;
+    }
+    if (t === 'MOUSE_MIDDLE' || t === 'MBUTTON' || t === 'MOUSE_MCLICK') {
+      this.xdo.run([mode === 'down' ? 'mousedown' : mode === 'up' ? 'mouseup' : 'click', '2']);
+      return true;
+    }
+    if (t === 'MOUSE_DOUBLE' || t === 'MOUSE_DBLCLICK') {
+      if (mode !== 'up') this.xdo.run(['click', '--repeat', '2', '--delay', '25', '1']);
+      return true;
+    }
+    return false;
   }
 
   async _handle(args) {
@@ -292,9 +476,24 @@ class InputController {
       case 'key': {
         const combo = String(args.key || '').toUpperCase();
         if (this.hooks.onKeyCombo && (await this.hooks.onKeyCombo(combo))) return { ok: true };
+        if (this._handleMouseToken(combo, 'tap')) return { ok: true };
         const keys = mapKeyCombo(combo);
         if (keys) this.xdo.run(['key', '--clearmodifiers', keys]);
         return { ok: true };
+      }
+      case 'key_down': {
+        const combo = String(args.key || '').toUpperCase();
+        if (this._handleMouseToken(combo, 'down')) return { ok: true, holdingKey: combo };
+        const keys = mapKeyCombo(combo);
+        if (keys) this.xdo.run(['keydown', '--clearmodifiers', keys]);
+        return { ok: true, holdingKey: combo };
+      }
+      case 'key_up': {
+        const combo = String(args.key || '').toUpperCase();
+        if (this._handleMouseToken(combo, 'up')) return { ok: true, holdingKey: '' };
+        const keys = mapKeyCombo(combo);
+        if (keys) this.xdo.run(['keyup', '--clearmodifiers', keys]);
+        return { ok: true, holdingKey: '' };
       }
       default:
         return { ok: false };
