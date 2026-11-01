@@ -1414,17 +1414,30 @@ body.modal-open .main-viewport {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  flex-wrap: nowrap;
+  gap: 4px;
+  row-gap: 6px;
+  flex-wrap: wrap;
   width: 100%;
 }
 
 .remote-mon-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex-wrap: nowrap;
   flex-shrink: 0;
+}
+
+.remote-mon-tabs .mode-pill {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 8px;
+  gap: 3px;
+  font-size: 11.5px;
+}
+
+.remote-mon-tabs .remote-mon-pill-icon {
+  display: none;
 }
 
 .remote-header-right {
@@ -1436,10 +1449,17 @@ body.modal-open .main-viewport {
   margin-left: auto;
 }
 
+.remote-header-right .icon-btn-sm {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+}
+
 .remote-mode-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   flex-shrink: 0;
 }
 
@@ -2011,12 +2031,45 @@ body.modal-open .main-viewport {
 }
 
 .volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
   height: 6px;
   accent-color: var(--ink-primary);
-  background-color: var(--bg-graphite);
-  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    #FAFAFA 0%,
+    #FAFAFA var(--slider-pct, 0%),
+    var(--bg-graphite) var(--slider-pct, 0%),
+    var(--bg-graphite) 100%
+  );
+  border-radius: 999px;
   cursor: pointer;
+  outline: none;
+  touch-action: none;
+}
+
+.volume-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background-color: #FFFFFF;
+  border: 2px solid #09090B;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  transition: transform 100ms ease;
+}
+
+.volume-slider:active::-webkit-slider-thumb {
+  transform: scale(1.18);
 }
 
 .media-transport-row {
@@ -3896,7 +3949,7 @@ body {
 }
 
 .remote-header-bar {
-  overflow-x: auto;
+  overflow: visible;
   max-width: 100%;
 }
 
@@ -4571,9 +4624,10 @@ select.input-field {
 }
 
 .stream-toggle-pill {
+  min-height: 32px;
   height: 32px;
-  padding: 0 12px;
-  font-size: 12px;
+  padding: 0 9px;
+  font-size: 11.5px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -4782,6 +4836,10 @@ select.input-field:focus-visible,
   width: 100% !important;
   margin-top: 2px;
   margin-bottom: 2px;
+  min-height: 28px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .media-time-label {
@@ -4789,9 +4847,10 @@ select.input-field:focus-visible,
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-secondary);
-  min-width: 34px;
+  min-width: 36px;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 #mediaCurrentTime {
@@ -4804,11 +4863,14 @@ select.input-field:focus-visible,
 
 .media-seek-slider,
 #mediaSeekSlider {
-  flex: 1 1 auto !important;
-  width: auto !important;
+  flex: 1 1 0% !important;
+  width: 100% !important;
   min-width: 0 !important;
   margin: 0 !important;
-  height: 6px !important;
+  height: 26px !important;
+  padding: 10px 0 !important;
+  background-clip: content-box !important;
+  touch-action: none !important;
 }
 
 /* Tighten Gap Under "Uygulamalar" Header */

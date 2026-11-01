@@ -5351,6 +5351,9 @@ namespace TahaBLT
         private static object gsmtcManagerCache = null;
         private static string stickyMediaAppId = "";
         private static string stickyMediaTitle = "";
+        private static string lastSeekAppId = "";
+        private static double lastSeekPositionSec = 0.0;
+        private static DateTimeOffset lastSeekWallUtc = DateTimeOffset.MinValue;
         private static readonly object mediaSelectLock = new object();
 
         // The "now playing" item must not jump between apps/tabs when the user pauses (the audio meter goes
@@ -5482,6 +5485,7 @@ namespace TahaBLT
                 MethodInfo getPropsMethod = sessType.GetMethod("TryGetMediaPropertiesAsync");
                 MethodInfo seekMethod = sessType.GetMethod("TryChangePlaybackPositionAsync");
 
+                PropertyInfo startProp = tlType.GetProperty("StartTime");
                 PropertyInfo posProp = tlType.GetProperty("Position");
                 PropertyInfo endProp = tlType.GetProperty("EndTime");
                 PropertyInfo updatedProp = tlType.GetProperty("LastUpdatedTime");
@@ -5489,13 +5493,14 @@ namespace TahaBLT
                 PropertyInfo titleProp = propsType != null ? propsType.GetProperty("Title") : null;
                 PropertyInfo artistProp = propsType != null ? propsType.GetProperty("Artist") : null;
 
-                object seekTargetSession = null;
+                var startTicksBySession = new Dictionary<object, long>();
                 foreach (object s in sessions)
                 {
                     try
                     {
                         string appId = Convert.ToString(appIdProp.GetValue(s, null) ?? "");
                         object tl = getTlMethod.Invoke(s, null);
+                        TimeSpan start = startProp != null ? (TimeSpan)startProp.GetValue(tl, null) : TimeSpan.Zero;
                         TimeSpan pos = (TimeSpan)posProp.GetValue(tl, null);
                         TimeSpan end = (TimeSpan)endProp.GetValue(tl, null);
                         DateTimeOffset updated = (DateTimeOffset)updatedProp.GetValue(tl, null);
@@ -5504,13 +5509,29 @@ namespace TahaBLT
                         int pbStatus = Convert.ToInt32(statusProp.GetValue(pb, null));
                         bool isPlaying = (pbStatus == 4); // 4 = Playing, 5 = Paused
 
-                        double durSec = Math.Max(0.0, end.TotalSeconds);
-                        double posSec = Math.Max(0.0, pos.TotalSeconds);
+                        long baseStartTicks = start.Ticks > 0 && end > start ? start.Ticks : 0L;
+                        startTicksBySession[s] = baseStartTicks;
+                        double durSec = Math.Max(0.0, (end - TimeSpan.FromTicks(baseStartTicks)).TotalSeconds);
+                        double posSec = Math.Max(0.0, (pos - TimeSpan.FromTicks(baseStartTicks)).TotalSeconds);
                         if (isPlaying && updated.Year > 2020)
                         {
                             double elapsed = (DateTimeOffset.UtcNow - updated).TotalSeconds;
                             if (elapsed > 0 && elapsed < 36000)
                                 posSec += elapsed;
+                        }
+                        lock (mediaSelectLock)
+                        {
+                            if (!string.IsNullOrEmpty(lastSeekAppId) &&
+                                string.Equals(appId, lastSeekAppId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                double sinceSeekSec = (DateTimeOffset.UtcNow - lastSeekWallUtc).TotalSeconds;
+                                if (sinceSeekSec >= 0.0 && sinceSeekSec < 2.8)
+                                {
+                                    double expectedPos = lastSeekPositionSec + (isPlaying ? sinceSeekSec : 0.0);
+                                    if (Math.Abs(posSec - expectedPos) > 1.8)
+                                        posSec = expectedPos;
+                                }
+                            }
                         }
                         if (durSec > 0 && posSec > durSec) posSec = durSec;
 
@@ -5531,18 +5552,6 @@ namespace TahaBLT
                             catch { }
                         }
 
-                        if (seekPositionSec.HasValue)
-                        {
-                            if (!string.IsNullOrEmpty(targetProcHint) && appId.IndexOf(targetProcHint, StringComparison.OrdinalIgnoreCase) >= 0)
-                            {
-                                seekTargetSession = s;
-                            }
-                            else if (seekTargetSession == null && (isPlaying || s == currentSess))
-                            {
-                                seekTargetSession = s;
-                            }
-                        }
-
                         result.Add(new GsmtcMediaSnapshot
                         {
                             AppId = appId,
@@ -5558,20 +5567,41 @@ namespace TahaBLT
                     catch { }
                 }
 
-                if (seekPositionSec.HasValue && seekMethod != null)
+                if (seekPositionSec.HasValue && seekMethod != null && result.Count > 0)
                 {
-                    if (seekTargetSession == null && currentSess != null) seekTargetSession = currentSess;
-                    if (seekTargetSession == null && result.Count > 0) seekTargetSession = result[0].SessionObj;
-                    if (seekTargetSession != null)
+                    GsmtcMediaSnapshot targetSnap = null;
+                    if (!string.IsNullOrEmpty(targetProcHint))
                     {
-                        long ticks = (long)(Math.Max(0.0, seekPositionSec.Value) * 10000000.0);
-                        object seekOp = seekMethod.Invoke(seekTargetSession, new object[] { ticks });
-                        AwaitWinRtOperation(seekOp, boolType, 500);
                         foreach (var snap in result)
                         {
-                            if (snap.SessionObj == seekTargetSession)
-                                snap.PositionSec = Math.Round(Math.Max(0.0, seekPositionSec.Value), 1);
+                            if (snap.AppId.IndexOf(targetProcHint, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                FriendlyMediaAppName(snap.AppId).IndexOf(targetProcHint, StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                targetSnap = snap;
+                                break;
+                            }
                         }
+                    }
+                    if (targetSnap == null)
+                    {
+                        targetSnap = PickNowPlayingSession(result);
+                    }
+                    if (targetSnap != null && targetSnap.SessionObj != null)
+                    {
+                        double clampedTarget = Math.Max(0.0, seekPositionSec.Value);
+                        if (targetSnap.DurationSec > 0 && clampedTarget > targetSnap.DurationSec)
+                            clampedTarget = targetSnap.DurationSec;
+                        long baseTicks = startTicksBySession.ContainsKey(targetSnap.SessionObj) ? startTicksBySession[targetSnap.SessionObj] : 0L;
+                        long ticks = baseTicks + (long)(clampedTarget * 10000000.0);
+                        lock (mediaSelectLock)
+                        {
+                            lastSeekAppId = targetSnap.AppId;
+                            lastSeekPositionSec = clampedTarget;
+                            lastSeekWallUtc = DateTimeOffset.UtcNow;
+                        }
+                        object seekOp = seekMethod.Invoke(targetSnap.SessionObj, new object[] { ticks });
+                        AwaitWinRtOperation(seekOp, boolType, 600);
+                        targetSnap.PositionSec = Math.Round(clampedTarget, 1);
                     }
                 }
             }

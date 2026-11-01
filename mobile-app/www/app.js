@@ -2799,6 +2799,7 @@
               min="10"
               max="100"
               value="${level}"
+              style="--slider-pct: ${(((level - 10) / 90) * 100).toFixed(1)}%"
             />
           </div>
         `;
@@ -2954,13 +2955,12 @@
     const box = getRemoteContentBox();
     if (!box) return;
     const pxPerSrc = box.width / Math.max(1, remoteRender.srcW);
-    // Never let the cursor become unreadably tiny on a phone screen
-    const cursorScale = Math.max(pxPerSrc, 0.55);
+    const cursorScale = pxPerSrc;
     const x = box.left + state.cursorNormX * box.width - remoteRender.cursorHotX * cursorScale;
     const y = box.top + state.cursorNormY * box.height - remoteRender.cursorHotY * cursorScale;
-    cursorEl.style.width = `${Math.round(remoteRender.cursorW * cursorScale)}px`;
-    cursorEl.style.height = `${Math.round(remoteRender.cursorH * cursorScale)}px`;
-    cursorEl.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+    cursorEl.style.width = `${(remoteRender.cursorW * cursorScale).toFixed(2)}px`;
+    cursorEl.style.height = `${(remoteRender.cursorH * cursorScale).toFixed(2)}px`;
+    cursorEl.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
   }
 
   function noteLocalCursorMove() {
@@ -3700,6 +3700,16 @@
     return null;
   }
 
+  function syncSliderFillPct(el) {
+    if (!el) return;
+    const min = Number(el.min || 0);
+    const max = Number(el.max || 100);
+    const val = Number(el.value || 0);
+    const span = max - min;
+    const pct = span > 0 ? Math.max(0, Math.min(100, ((val - min) / span) * 100)) : 0;
+    el.style.setProperty('--slider-pct', `${pct.toFixed(1)}%`);
+  }
+
   function updateMediaTimelineDom() {
     if (state.isSeekingMedia) return;
     const curEl = document.getElementById('mediaCurrentTime');
@@ -3713,6 +3723,8 @@
       totEl.textContent = '00:00';
       seekEl.max = 100;
       seekEl.value = 0;
+      seekEl.disabled = true;
+      syncSliderFillPct(seekEl);
       return;
     }
 
@@ -3720,8 +3732,10 @@
     const pos = Math.max(0, Math.min(dur > 0 ? dur : 99999, Number(np.positionSec || 0)));
     curEl.textContent = formatMediaTime(pos);
     totEl.textContent = formatMediaTime(dur);
+    seekEl.disabled = dur <= 0;
     seekEl.max = dur > 0 ? dur : 100;
     seekEl.value = dur > 0 ? pos : 0;
+    syncSliderFillPct(seekEl);
   }
 
   function ensureMediaTimelineTicker() {
@@ -3732,17 +3746,27 @@
     }, 1000);
   }
 
+  let mediaSeekIntent = null;
+
   function performMediaSeek(targetSec) {
-    const posSec = Math.max(0, Math.round(Number(targetSec) || 0));
+    const dur = state.audio && state.audio.nowPlaying ? Math.max(0, Number(state.audio.nowPlaying.durationSec || 0)) : 0;
+    const rawSec = Math.max(0, Math.round(Number(targetSec) || 0));
+    const posSec = dur > 0 ? Math.min(dur, rawSec) : rawSec;
+    const now = Date.now();
+    mediaSeekIntent = {
+      positionSec: posSec,
+      wallTs: now,
+      until: now + 3200
+    };
     if (state.audio && state.audio.nowPlaying) {
       state.audio.nowPlaying.positionSec = posSec;
-      state.lastMediaSyncWallTs = Date.now();
+      state.lastMediaSyncWallTs = now;
     }
     updateMediaTimelineDom();
     state.lastMediaNotifHash = '';
     syncAndroidMediaNotification();
 
-    sendCommand('audio_control', { action: 'seek', positionSec: posSec }, 3000)
+    sendCommand('audio_control', { action: 'seek', positionSec: posSec }, 4000)
       .then((audio) => {
         if (audio) {
           state.audio = reconcileMediaIntent(audio);
@@ -3764,13 +3788,35 @@
   let mediaPlayIntent = null;
 
   function reconcileMediaIntent(audio) {
-    if (!audio || !audio.nowPlaying || !mediaPlayIntent) return audio;
-    const np = audio.nowPlaying;
-    if (Date.now() > mediaPlayIntent.until || Boolean(np.isPlaying) === mediaPlayIntent.isPlaying) {
-      mediaPlayIntent = null;
-      return audio;
+    if (!audio || !audio.nowPlaying) return audio;
+    let np = { ...audio.nowPlaying };
+    const now = Date.now();
+
+    if (mediaPlayIntent) {
+      if (now > mediaPlayIntent.until || Boolean(np.isPlaying) === mediaPlayIntent.isPlaying) {
+        mediaPlayIntent = null;
+      } else {
+        np.isPlaying = mediaPlayIntent.isPlaying;
+      }
     }
-    return { ...audio, nowPlaying: { ...np, isPlaying: mediaPlayIntent.isPlaying } };
+
+    if (mediaSeekIntent) {
+      if (now > mediaSeekIntent.until) {
+        mediaSeekIntent = null;
+      } else {
+        const elapsed = np.isPlaying ? Math.max(0, Math.floor((now - mediaSeekIntent.wallTs) / 1000)) : 0;
+        const expectedPos = mediaSeekIntent.positionSec + elapsed;
+        const reportedPos = Math.max(0, Number(np.positionSec || 0));
+        if (Math.abs(reportedPos - expectedPos) <= 2) {
+          mediaSeekIntent = null;
+        } else {
+          const dur = Math.max(0, Number(np.durationSec || 0));
+          np.positionSec = dur > 0 ? Math.min(dur, expectedPos) : expectedPos;
+        }
+      }
+    }
+
+    return { ...audio, nowPlaying: np };
   }
 
   function triggerMediaKeyCommand(key) {
@@ -3982,6 +4028,7 @@
 
     if (slider && valEl && muteBtn) {
       slider.value = state.audio.masterVolume ?? 100;
+      syncSliderFillPct(slider);
       valEl.textContent = `${state.audio.masterVolume ?? 100}%`;
       muteBtn.innerHTML = state.audio.masterMuted
         ? `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 5L5.5 8H3v4h2.5L9 15V5z" stroke-linejoin="round" /><path d="M13 8l4 4M17 8l-4 4" stroke-linecap="round" /></svg>`
@@ -4050,6 +4097,7 @@
             min="0"
             max="100"
             value="${s.volume}"
+            style="--slider-pct: ${Math.max(0, Math.min(100, Number(s.volume || 0)))}%"
             data-app-vol-pid="${s.pid}"
           />
         </div>
@@ -6751,6 +6799,8 @@
         if (
           e.target.closest('#remoteViewportBox') ||
           e.target.closest('input[type="range"]') ||
+          e.target.closest('.media-timeline-row') ||
+          e.target.closest('[data-layout-id="sys_media_timeline"]') ||
           e.target.closest('.monitor-pill-row')
         ) {
           finishSwipe();
@@ -7068,7 +7118,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.5';
+    let currentAppVer = '2.19.6';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -9946,32 +9996,103 @@
     // Live Media Seek Slider (in Ses ve Medya Mikseri)
     const mediaSeekSlider = document.getElementById('mediaSeekSlider');
     if (mediaSeekSlider) {
-      mediaSeekSlider.addEventListener('touchstart', () => {
-        state.isSeekingMedia = true;
-      }, { passive: true });
-      mediaSeekSlider.addEventListener('mousedown', () => {
-        state.isSeekingMedia = true;
-      });
-      mediaSeekSlider.addEventListener('input', () => {
-        state.isSeekingMedia = true;
-        const curEl = document.getElementById('mediaCurrentTime');
-        if (curEl) curEl.textContent = formatMediaTime(Number(mediaSeekSlider.value));
-      });
-      const releaseSeekLock = () => {
-        setTimeout(() => {
-          state.isSeekingMedia = false;
-        }, 120);
-      };
-      mediaSeekSlider.addEventListener('touchend', releaseSeekLock, { passive: true });
-      mediaSeekSlider.addEventListener('touchcancel', releaseSeekLock, { passive: true });
-      mediaSeekSlider.addEventListener('mouseup', releaseSeekLock);
-      mediaSeekSlider.addEventListener('change', () => {
-        const targetSec = Number(mediaSeekSlider.value);
+      let lastSeekCommitTs = 0;
+      const commitMediaSeek = (rawSec) => {
+        const now = performance.now();
+        if (now - lastSeekCommitTs < 80) return;
+        lastSeekCommitTs = now;
+        const targetSec = Math.max(0, Math.round(Number(rawSec) || 0));
         state.isSeekingMedia = false;
         triggerHaptic(8);
         performMediaSeek(targetSec);
+      };
+
+      const updateSeekFromClientX = (clientX) => {
+        if (mediaSeekSlider.disabled) return;
+        const rect = mediaSeekSlider.getBoundingClientRect();
+        if (!rect || rect.width <= 0) return;
+        const min = Number(mediaSeekSlider.min || 0);
+        const max = Number(mediaSeekSlider.max || 100);
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        const val = Math.round(min + ratio * (max - min));
+        mediaSeekSlider.value = val;
+        syncSliderFillPct(mediaSeekSlider);
+        const curEl = document.getElementById('mediaCurrentTime');
+        if (curEl) curEl.textContent = formatMediaTime(val);
+      };
+
+      mediaSeekSlider.addEventListener(
+        'touchstart',
+        (e) => {
+          if (document.body.classList.contains('layout-edit-mode') || mediaSeekSlider.disabled) return;
+          e.stopPropagation();
+          state.isSeekingMedia = true;
+          if (e.touches && e.touches[0]) {
+            updateSeekFromClientX(e.touches[0].clientX);
+          }
+        },
+        { passive: true }
+      );
+
+      mediaSeekSlider.addEventListener(
+        'touchmove',
+        (e) => {
+          if (!state.isSeekingMedia || mediaSeekSlider.disabled) return;
+          e.stopPropagation();
+          if (e.cancelable) e.preventDefault();
+          if (e.touches && e.touches[0]) {
+            updateSeekFromClientX(e.touches[0].clientX);
+          }
+        },
+        { passive: false }
+      );
+
+      mediaSeekSlider.addEventListener(
+        'touchend',
+        (e) => {
+          if (!state.isSeekingMedia) return;
+          e.stopPropagation();
+          if (e.changedTouches && e.changedTouches[0]) {
+            updateSeekFromClientX(e.changedTouches[0].clientX);
+          }
+          commitMediaSeek(mediaSeekSlider.value);
+        },
+        { passive: true }
+      );
+
+      mediaSeekSlider.addEventListener(
+        'touchcancel',
+        () => {
+          state.isSeekingMedia = false;
+          updateMediaTimelineDom();
+        },
+        { passive: true }
+      );
+
+      mediaSeekSlider.addEventListener('mousedown', () => {
+        if (mediaSeekSlider.disabled) return;
+        state.isSeekingMedia = true;
+      });
+
+      mediaSeekSlider.addEventListener('input', () => {
+        if (mediaSeekSlider.disabled) return;
+        state.isSeekingMedia = true;
+        syncSliderFillPct(mediaSeekSlider);
+        const curEl = document.getElementById('mediaCurrentTime');
+        if (curEl) curEl.textContent = formatMediaTime(Number(mediaSeekSlider.value));
+      });
+
+      mediaSeekSlider.addEventListener('change', () => {
+        if (mediaSeekSlider.disabled) return;
+        commitMediaSeek(mediaSeekSlider.value);
       });
     }
+
+    document.addEventListener('input', (e) => {
+      if (e.target && e.target.classList && e.target.classList.contains('volume-slider')) {
+        syncSliderFillPct(e.target);
+      }
+    });
 
     // Automatically blur <select> elements after selection so focus highlight never gets stuck on mobile
     document.addEventListener('change', (e) => {
