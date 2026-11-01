@@ -3182,7 +3182,7 @@ function startStreamV2(ws, params) {
     },
     monitorIndex: monIdx,
     isAllMonitors,
-    maxFps: Math.max(10, Math.min(60, Number(params.maxFps) || profile.maxFps)),
+    maxFps: Math.max(10, Math.min(240, Number(params.maxFps) || profile.maxFps)),
     // The phone only advertises video when WebCodecs can decode H.264
     allowVideo: params.video === true,
     // AV1 when the phone asked for it; the bridge falls back to H.264 if this PC has no AV1 encoder

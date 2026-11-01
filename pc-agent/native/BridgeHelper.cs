@@ -79,6 +79,43 @@ namespace TahaBLT
             public string DeviceKey;
         }
 
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        public struct DEVMODE
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string dmDeviceName;
+            public short dmSpecVersion;
+            public short dmDriverVersion;
+            public short dmSize;
+            public short dmDriverExtra;
+            public int dmFields;
+            public int dmPositionX;
+            public int dmPositionY;
+            public int dmDisplayOrientation;
+            public int dmDisplayFixedOutput;
+            public short dmColor;
+            public short dmDuplex;
+            public short dmYResolution;
+            public short dmTTOption;
+            public short dmCollate;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string dmFormName;
+            public short dmLogPixels;
+            public int dmBitsPerPel;
+            public int dmPelsWidth;
+            public int dmPelsHeight;
+            public int dmDisplayFlags;
+            public int dmDisplayFrequency;
+            public int dmICMMethod;
+            public int dmICMIntent;
+            public int dmMediaType;
+            public int dmDitherType;
+            public int dmReserved1;
+            public int dmReserved2;
+            public int dmPanningWidth;
+            public int dmPanningHeight;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         public struct CURSORINFO
         {
@@ -262,6 +299,27 @@ namespace TahaBLT
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern bool EnumDisplayDevices(string lpDevice, uint iDevNum, ref DISPLAY_DEVICE lpDisplayDevice, uint dwFlags);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        public static extern bool EnumDisplaySettings(string lpszDeviceName, int iModeNum, ref DEVMODE lpDevMode);
+
+        public const int ENUM_CURRENT_SETTINGS = -1;
+
+        public static int QueryDeviceRefreshRate(string deviceName)
+        {
+            try
+            {
+                DEVMODE dm = new DEVMODE();
+                dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+                if (EnumDisplaySettings(deviceName, ENUM_CURRENT_SETTINGS, ref dm))
+                {
+                    if (dm.dmDisplayFrequency >= 24 && dm.dmDisplayFrequency <= 500)
+                        return dm.dmDisplayFrequency;
+                }
+            }
+            catch { }
+            return 60;
+        }
 
         [DllImport("dwmapi.dll")]
         public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
@@ -989,6 +1047,7 @@ namespace TahaBLT
             public int workY;
             public int workWidth;
             public int workHeight;
+            public int refreshRate;
             public bool isBlackedOut;
             public int brightness;
         }
@@ -1275,6 +1334,8 @@ namespace TahaBLT
                         monBrightness = currentBrightnessLevel;
                 }
 
+                int monRefreshRate = QueryDeviceRefreshRate(s.DeviceName);
+
                 list.Add(new MonitorData
                 {
                     index = i,
@@ -1290,6 +1351,7 @@ namespace TahaBLT
                     workY = s.WorkingArea.Y,
                     workWidth = s.WorkingArea.Width,
                     workHeight = s.WorkingArea.Height,
+                    refreshRate = monRefreshRate,
                     isBlackedOut = blacked,
                     brightness = monBrightness
                 });
@@ -3988,17 +4050,19 @@ namespace TahaBLT
             }
             if (monitors.Count == 0)
             {
-                return new MonitorData { index = 0, x = 0, y = 0, width = 1920, height = 1080 };
+                return new MonitorData { index = 0, x = 0, y = 0, width = 1920, height = 1080, refreshRate = 60 };
             }
             if (monitorIndex == -1)
             {
                 int minX = int.MaxValue, minY = int.MaxValue, maxR = int.MinValue, maxB = int.MinValue;
+                int maxHz = 60;
                 foreach (var m in monitors)
                 {
                     if (m.x < minX) minX = m.x;
                     if (m.y < minY) minY = m.y;
                     if (m.x + m.width > maxR) maxR = m.x + m.width;
                     if (m.y + m.height > maxB) maxB = m.y + m.height;
+                    if (m.refreshRate > maxHz) maxHz = m.refreshRate;
                 }
                 return new MonitorData
                 {
@@ -4008,11 +4072,53 @@ namespace TahaBLT
                     x = minX,
                     y = minY,
                     width = Math.Max(1, maxR - minX),
-                    height = Math.Max(1, maxB - minY)
+                    height = Math.Max(1, maxB - minY),
+                    refreshRate = maxHz
                 };
             }
             if (monitorIndex < 0 || monitorIndex >= monitors.Count) monitorIndex = 0;
             return monitors[monitorIndex];
+        }
+
+        private static int GetMonitorRefreshRateAtPoint(int x, int y, out int activeMonitorIndex)
+        {
+            activeMonitorIndex = 0;
+            var monitors = cachedMonitorsBounds;
+            if (monitors == null || monitors.Count == 0)
+            {
+                GetTargetMonitorBounds(0);
+                monitors = cachedMonitorsBounds;
+            }
+            if (monitors == null || monitors.Count == 0)
+                return 60;
+
+            for (int i = 0; i < monitors.Count; i++)
+            {
+                var m = monitors[i];
+                if (x >= m.x && x < m.x + m.width && y >= m.y && y < m.y + m.height)
+                {
+                    activeMonitorIndex = m.index;
+                    return m.refreshRate >= 24 ? m.refreshRate : 60;
+                }
+            }
+
+            // Fallback: nearest monitor center if cursor is at a corner gap
+            long bestDistSq = long.MaxValue;
+            int bestHz = 60;
+            for (int i = 0; i < monitors.Count; i++)
+            {
+                var m = monitors[i];
+                long cx = m.x + m.width / 2;
+                long cy = m.y + m.height / 2;
+                long dSq = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+                if (dSq < bestDistSq)
+                {
+                    bestDistSq = dSq;
+                    bestHz = m.refreshRate >= 24 ? m.refreshRate : 60;
+                    activeMonitorIndex = m.index;
+                }
+            }
+            return bestHz;
         }
 
 
@@ -4335,6 +4441,242 @@ namespace TahaBLT
             }
         }
 
+        // Per-Monitor Native-Hz Cursor Pacer:
+        // Smoothly steps relative touchpad movement at the exact hardware refresh rate (Hz)
+        // of whichever monitor the cursor is currently on (60Hz / 75Hz / 120Hz / 144Hz / 165Hz / 240Hz / 360Hz),
+        // dynamically adapting cadence when the cursor crosses between monitors with different refresh rates.
+        private static readonly object cursorPacerLock = new object();
+        private static readonly AutoResetEvent cursorPacerWake = new AutoResetEvent(false);
+        private static Thread cursorPacerThread = null;
+        private static double pacerCurrentX = double.NaN;
+        private static double pacerCurrentY = double.NaN;
+        private static double pacerTargetX = double.NaN;
+        private static double pacerTargetY = double.NaN;
+        private static int pacerBoundsMinX = 0;
+        private static int pacerBoundsMinY = 0;
+        private static int pacerBoundsMaxX = 1919;
+        private static int pacerBoundsMaxY = 1079;
+        private static int pacerStepsRemaining = 0;
+        private static string pacerPriority = "active_lock";
+        private static long pacerLastPacketSwTicks = 0;
+        private static double pacerSmoothedPacketMs = 10.0;
+
+        private static void EnsureCursorNativeHzPacerStarted()
+        {
+            if (cursorPacerThread != null) return;
+            lock (cursorPacerLock)
+            {
+                if (cursorPacerThread != null) return;
+                try { SN.timeBeginPeriod(1); } catch { }
+                cursorPacerThread = new Thread(CursorNativeHzPacerLoop)
+                {
+                    IsBackground = true,
+                    Priority = ThreadPriority.Highest,
+                    Name = "BridgeCursorNativeHzPacer"
+                };
+                cursorPacerThread.Start();
+            }
+        }
+
+        private static void FlushPendingCursorPacerImmediately(string priority)
+        {
+            int finalX = int.MinValue;
+            int finalY = int.MinValue;
+            lock (cursorPacerLock)
+            {
+                if (pacerStepsRemaining > 0 && !double.IsNaN(pacerTargetX) && !double.IsNaN(pacerTargetY))
+                {
+                    pacerCurrentX = pacerTargetX;
+                    pacerCurrentY = pacerTargetY;
+                    pacerStepsRemaining = 0;
+                    finalX = (int)Math.Round(pacerTargetX);
+                    finalY = (int)Math.Round(pacerTargetY);
+                }
+            }
+            if (finalX != int.MinValue)
+            {
+                MoveCursorHardware(finalX, finalY, priority);
+            }
+        }
+
+        private static void CursorNativeHzPacerLoop()
+        {
+            while (true)
+            {
+                cursorPacerWake.WaitOne(50);
+                while (true)
+                {
+                    int stepX = int.MinValue;
+                    int stepY = int.MinValue;
+                    int activeHz = 60;
+                    string prio = "active_lock";
+                    lock (cursorPacerLock)
+                    {
+                        if (pacerStepsRemaining <= 0 || double.IsNaN(pacerTargetX) || double.IsNaN(pacerTargetY))
+                        {
+                            pacerStepsRemaining = 0;
+                            break;
+                        }
+                        double remX = pacerTargetX - pacerCurrentX;
+                        double remY = pacerTargetY - pacerCurrentY;
+                        if (pacerStepsRemaining <= 1 || (Math.Abs(remX) < 0.65 && Math.Abs(remY) < 0.65))
+                        {
+                            pacerCurrentX = pacerTargetX;
+                            pacerCurrentY = pacerTargetY;
+                            pacerStepsRemaining = 0;
+                        }
+                        else
+                        {
+                            pacerCurrentX += remX / pacerStepsRemaining;
+                            pacerCurrentY += remY / pacerStepsRemaining;
+                            pacerStepsRemaining--;
+                        }
+                        stepX = Math.Max(pacerBoundsMinX, Math.Min(pacerBoundsMaxX, (int)Math.Round(pacerCurrentX)));
+                        stepY = Math.Max(pacerBoundsMinY, Math.Min(pacerBoundsMaxY, (int)Math.Round(pacerCurrentY)));
+                        int monIdx;
+                        activeHz = GetMonitorRefreshRateAtPoint(stepX, stepY, out monIdx);
+                        prio = pacerPriority;
+                    }
+
+                    if (stepX != int.MinValue)
+                    {
+                        if (CheckMousePriorityAllowsPhone(prio, "mouse_move_rel"))
+                        {
+                            MoveCursorHardware(stepX, stepY, prio);
+                        }
+                        else
+                        {
+                            lock (cursorPacerLock)
+                            {
+                                pacerStepsRemaining = 0;
+                            }
+                            break;
+                        }
+                    }
+
+                    // Sleep for exactly one VSync interval of the monitor the cursor is currently on
+                    double intervalMs = 1000.0 / Math.Max(30, Math.Min(500, activeHz));
+                    long startTicks = Stopwatch.GetTimestamp();
+                    long waitTicks = (long)(intervalMs * Stopwatch.Frequency / 1000.0);
+                    double sleepMs = intervalMs - 1.6;
+                    if (sleepMs >= 1.0)
+                    {
+                        Thread.Sleep((int)sleepMs);
+                    }
+                    while (Stopwatch.GetTimestamp() - startTicks < waitTicks)
+                    {
+                        Thread.SpinWait(40);
+                    }
+                }
+            }
+        }
+
+        private static object EnqueueRelativeCursorMove(double dx, double dy, MonitorData boundsMon, string mousePriority)
+        {
+            EnsureCursorNativeHzPacerStarted();
+            int immediateX;
+            int immediateY;
+            double finalTargetX;
+            double finalTargetY;
+            int activeHz;
+            int activeMonIdx;
+            bool wakePacer = false;
+
+            lock (cursorPacerLock)
+            {
+                long nowSw = Stopwatch.GetTimestamp();
+                double elapsedMs = pacerLastPacketSwTicks > 0
+                    ? (nowSw - pacerLastPacketSwTicks) * 1000.0 / Stopwatch.Frequency
+                    : 1000.0;
+                pacerLastPacketSwTicks = nowSw;
+
+                if (elapsedMs >= 1.5 && elapsedMs <= 45.0)
+                {
+                    pacerSmoothedPacketMs = pacerSmoothedPacketMs * 0.65 + elapsedMs * 0.35;
+                }
+                else if (elapsedMs > 90.0)
+                {
+                    pacerSmoothedPacketMs = 10.0;
+                }
+
+                int hwX, hwY;
+                lock (mousePrioritySync)
+                {
+                    uint msSincePhone = (uint)(Environment.TickCount - lastPhoneMoveTick);
+                    if (lastPhoneCursorX != int.MinValue && (msSincePhone < 350 || mousePriority == "app_first"))
+                    {
+                        hwX = lastPhoneCursorX;
+                        hwY = lastPhoneCursorY;
+                    }
+                    else
+                    {
+                        Point p = Cursor.Position;
+                        hwX = p.X;
+                        hwY = p.Y;
+                    }
+                }
+
+                if (double.IsNaN(pacerCurrentX) || double.IsNaN(pacerTargetX) || elapsedMs > 90.0)
+                {
+                    pacerCurrentX = hwX;
+                    pacerCurrentY = hwY;
+                    pacerTargetX = hwX;
+                    pacerTargetY = hwY;
+                    pacerStepsRemaining = 0;
+                }
+
+                pacerBoundsMinX = boundsMon.x;
+                pacerBoundsMinY = boundsMon.y;
+                pacerBoundsMaxX = boundsMon.x + Math.Max(1, boundsMon.width) - 1;
+                pacerBoundsMaxY = boundsMon.y + Math.Max(1, boundsMon.height) - 1;
+                pacerPriority = mousePriority;
+
+                pacerTargetX = Math.Max(pacerBoundsMinX, Math.Min(pacerBoundsMaxX, pacerTargetX + dx));
+                pacerTargetY = Math.Max(pacerBoundsMinY, Math.Min(pacerBoundsMaxY, pacerTargetY + dy));
+                finalTargetX = pacerTargetX;
+                finalTargetY = pacerTargetY;
+
+                int curIntX = (int)Math.Round(pacerCurrentX);
+                int curIntY = (int)Math.Round(pacerCurrentY);
+                activeHz = GetMonitorRefreshRateAtPoint(curIntX, curIntY, out activeMonIdx);
+
+                double vsyncMs = 1000.0 / Math.Max(30, Math.Min(500, activeHz));
+                double remX = pacerTargetX - pacerCurrentX;
+                double remY = pacerTargetY - pacerCurrentY;
+                double dist = Math.Sqrt(remX * remX + remY * remY);
+
+                // Calculate how many native-Hz monitor refreshes occur per network packet window
+                int totalSteps = (int)Math.Round(Math.Max(1.0, Math.Min(6.0, pacerSmoothedPacketMs / vsyncMs)));
+                if (dist <= 1.75 || totalSteps <= 1)
+                {
+                    pacerCurrentX = pacerTargetX;
+                    pacerCurrentY = pacerTargetY;
+                    pacerStepsRemaining = 0;
+                }
+                else
+                {
+                    // Apply the first native-Hz step immediately (0ms initial latency) and schedule the rest at monitor VSync cadence
+                    pacerCurrentX += remX / totalSteps;
+                    pacerCurrentY += remY / totalSteps;
+                    pacerStepsRemaining = totalSteps - 1;
+                    wakePacer = true;
+                }
+
+                immediateX = Math.Max(pacerBoundsMinX, Math.Min(pacerBoundsMaxX, (int)Math.Round(pacerCurrentX)));
+                immediateY = Math.Max(pacerBoundsMinY, Math.Min(pacerBoundsMaxY, (int)Math.Round(pacerCurrentY)));
+            }
+
+            MoveCursorHardware(immediateX, immediateY, mousePriority);
+            if (wakePacer)
+            {
+                cursorPacerWake.Set();
+            }
+
+            double nx = Math.Max(0.0, Math.Min(1.0, (finalTargetX - boundsMon.x) / Math.Max(1, boundsMon.width)));
+            double ny = Math.Max(0.0, Math.Min(1.0, (finalTargetY - boundsMon.y) / Math.Max(1, boundsMon.height)));
+            return new { ok = true, normX = Math.Round(nx, 4), normY = Math.Round(ny, 4), activeHz = activeHz, activeMonitorIndex = activeMonIdx };
+        }
+
         private static object ApplyInputCommand(Dictionary<string, object> args)
         {
             string type = args.ContainsKey("type") ? Convert.ToString(args["type"]) : "";
@@ -4354,33 +4696,13 @@ namespace TahaBLT
             }
             else if (type == "mouse_move_rel")
             {
-                int dx = args.ContainsKey("dx") ? Convert.ToInt32(Math.Round(Convert.ToDouble(args["dx"]))) : 0;
-                int dy = args.ContainsKey("dy") ? Convert.ToInt32(Math.Round(Convert.ToDouble(args["dy"]))) : 0;
-                int baseX, baseY;
-                lock (mousePrioritySync)
-                {
-                    uint msSincePhone = (uint)(Environment.TickCount - lastPhoneMoveTick);
-                    if (lastPhoneCursorX != int.MinValue && (msSincePhone < 350 || mousePriority == "app_first"))
-                    {
-                        baseX = lastPhoneCursorX;
-                        baseY = lastPhoneCursorY;
-                    }
-                    else
-                    {
-                        Point p = Cursor.Position;
-                        baseX = p.X;
-                        baseY = p.Y;
-                    }
-                }
-                int nextX = Math.Max(mon.x, Math.Min(mon.x + mon.width - 1, baseX + dx));
-                int nextY = Math.Max(mon.y, Math.Min(mon.y + mon.height - 1, baseY + dy));
-                MoveCursorHardware(nextX, nextY, mousePriority);
-                double nx = Math.Max(0.0, Math.Min(1.0, (double)(nextX - mon.x) / Math.Max(1, mon.width)));
-                double ny = Math.Max(0.0, Math.Min(1.0, (double)(nextY - mon.y) / Math.Max(1, mon.height)));
-                return new { ok = true, normX = Math.Round(nx, 4), normY = Math.Round(ny, 4) };
+                double dx = args.ContainsKey("dx") ? Convert.ToDouble(args["dx"]) : 0.0;
+                double dy = args.ContainsKey("dy") ? Convert.ToDouble(args["dy"]) : 0.0;
+                return EnqueueRelativeCursorMove(dx, dy, mon, mousePriority);
             }
             else if (type == "mouse_move_abs")
             {
+                FlushPendingCursorPacerImmediately(mousePriority);
                 double nx = args.ContainsKey("x") ? Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"]))) : 0.5;
                 double ny = args.ContainsKey("y") ? Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["y"]))) : 0.5;
                 int targetX = mon.x + (int)Math.Round(nx * mon.width);
@@ -4390,6 +4712,7 @@ namespace TahaBLT
             }
             else if (type == "mouse_down")
             {
+                FlushPendingCursorPacerImmediately(mousePriority);
                 if (args.ContainsKey("x") && args.ContainsKey("y"))
                 {
                     double nx = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"])));
@@ -4404,6 +4727,7 @@ namespace TahaBLT
             }
             else if (type == "mouse_up")
             {
+                FlushPendingCursorPacerImmediately(mousePriority);
                 if (args.ContainsKey("x") && args.ContainsKey("y"))
                 {
                     double nx = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"])));
@@ -4418,6 +4742,7 @@ namespace TahaBLT
             }
             else if (type == "mouse_click")
             {
+                FlushPendingCursorPacerImmediately(mousePriority);
                 if (args.ContainsKey("x") && args.ContainsKey("y"))
                 {
                     double nx = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"])));

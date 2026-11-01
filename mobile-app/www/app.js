@@ -2854,7 +2854,7 @@
               ${isBlack ? '<path d="M5 6.5l14 7.5" stroke-linecap="round" />' : ''}
             </svg>
             <span class="monitor-icon-label">Ekran ${m.index + 1}</span>
-            <span class="monitor-icon-res">${m.width}×${m.height}</span>
+            <span class="monitor-icon-res">${m.width}×${m.height}${m.refreshRate ? ` · ${m.refreshRate}Hz` : ''}</span>
           </button>
         `;
       })
@@ -3722,6 +3722,55 @@
     }
   }
 
+  function getActiveTouchpadMonitorHz() {
+    const mons = Array.isArray(state.monitors) ? state.monitors : [];
+    if (!mons.length) return 60;
+    if (state.isStreaming && typeof state.remoteMonitorIndex === 'number' && state.remoteMonitorIndex >= 0) {
+      const m = mons.find((item) => item.index === state.remoteMonitorIndex) || mons[state.remoteMonitorIndex];
+      const hz = Number(m && m.refreshRate) || 60;
+      return Math.max(30, Math.min(360, hz));
+    }
+    if (mons.length === 1) {
+      const hz = Number(mons[0].refreshRate) || 60;
+      return Math.max(30, Math.min(360, hz));
+    }
+    // Multi-monitor mode: resolve which monitor currently contains the cursor (normX, normY)
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxR = -Infinity;
+    let maxB = -Infinity;
+    let maxHz = 60;
+    for (let i = 0; i < mons.length; i++) {
+      const m = mons[i];
+      const mx = Number(m.x) || 0;
+      const my = Number(m.y) || 0;
+      const mw = Number(m.width) || 1920;
+      const mh = Number(m.height) || 1080;
+      const mhz = Number(m.refreshRate) || 60;
+      if (mx < minX) minX = mx;
+      if (my < minY) minY = my;
+      if (mx + mw > maxR) maxR = mx + mw;
+      if (my + mh > maxB) maxB = my + mh;
+      if (mhz > maxHz) maxHz = mhz;
+    }
+    const totalW = Math.max(1, maxR - minX);
+    const totalH = Math.max(1, maxB - minY);
+    const curX = minX + (Number(state.cursorNormX) || 0.5) * totalW;
+    const curY = minY + (Number(state.cursorNormY) || 0.5) * totalH;
+    for (let i = 0; i < mons.length; i++) {
+      const m = mons[i];
+      const mx = Number(m.x) || 0;
+      const my = Number(m.y) || 0;
+      const mw = Number(m.width) || 1920;
+      const mh = Number(m.height) || 1080;
+      if (curX >= mx && curX <= mx + mw && curY >= my && curY <= my + mh) {
+        const hz = Number(m.refreshRate) || 60;
+        return Math.max(30, Math.min(360, hz));
+      }
+    }
+    return Math.max(30, Math.min(360, maxHz));
+  }
+
   async function startRemoteStream() {
     if (!state.isAuthenticated) return;
     const isTunnel = state.connectedRoute === 'MOBİL TÜNEL';
@@ -3742,6 +3791,7 @@
       const targetMaxCanvasWidth = isAllMonitors
         ? Math.min(5120, Math.max(3840, preset.maxCanvasWidth * monFactor))
         : preset.maxCanvasWidth;
+      const targetMonitorHz = profile === 'saver' ? preset.fps : Math.max(preset.fps, getActiveTouchpadMonitorHz());
       await sendCommand('start_stream', {
         protocol: 2,
         video,
@@ -3749,10 +3799,10 @@
         tunnel: isTunnel,
         profile,
         monitorIndex: state.remoteMonitorIndex,
-        maxFps: preset.fps,
+        maxFps: targetMonitorHz,
         maxCanvasWidth: targetMaxCanvasWidth,
         // legacy fields for older PC agents
-        fps: preset.fps,
+        fps: targetMonitorHz,
         maxWidth: isAllMonitors ? Math.min(3840, targetMaxCanvasWidth) : Math.min(1600, preset.maxCanvasWidth),
         quality: isAllMonitors ? 82 : 70,
         drawCursor: true,
@@ -6270,11 +6320,11 @@
     let smoothedVelocity = 0;
     let cachedBoxW = 340;
     let cachedBoxH = 220;
-    let trackpadMoveRafId = 0;
+    let trackpadMoveTimerId = 0;
 
     // Continuous, C1-smooth pointer acceleration curve (px/ms) without branch discontinuities
     function computeSmartTrackpadGain(instVelocityPxPerMs, dtMs) {
-      const alpha = 1 - Math.exp(-Math.max(6, dtMs) / 24);
+      const alpha = 1 - Math.exp(-Math.max(3, dtMs) / 22);
       smoothedVelocity = smoothedVelocity * (1 - alpha) + instVelocityPxPerMs * alpha;
       const v = Math.max(0, smoothedVelocity);
 
@@ -6295,9 +6345,9 @@
     }
 
     function flushTrackpadMoveNow(forceRound) {
-      if (trackpadMoveRafId) {
-        cancelAnimationFrame(trackpadMoveRafId);
-        trackpadMoveRafId = 0;
+      if (trackpadMoveTimerId) {
+        clearTimeout(trackpadMoveTimerId);
+        trackpadMoveTimerId = 0;
       }
       const stepX = forceRound ? Math.round(relAccX) : Math.trunc(relAccX);
       const stepY = forceRound ? Math.round(relAccY) : Math.trunc(relAccY);
@@ -6314,21 +6364,27 @@
           type: 'mouse_move_rel',
           monitorIndex: state.isStreaming ? state.remoteMonitorIndex : -1,
           dx: stepX,
-          dy: stepY
+          dy: stepY,
+          targetHz: getActiveTouchpadMonitorHz()
         });
       }
     }
 
     function scheduleTrackpadMoveFlush(now) {
-      if (now - lastMoveSendTs >= 7) {
+      // Uncapped from 60 FPS: dynamically match the native refresh rate (Hz) of whichever monitor the cursor is on
+      const activeHz = getActiveTouchpadMonitorHz();
+      const targetIntervalMs = Math.max(2.0, Math.min(8.3, 1000 / Math.max(60, activeHz)));
+      const elapsed = now - lastMoveSendTs;
+      if (elapsed >= targetIntervalMs) {
         flushTrackpadMoveNow(false);
         return;
       }
-      if (!trackpadMoveRafId) {
-        trackpadMoveRafId = requestAnimationFrame(() => {
-          trackpadMoveRafId = 0;
+      if (!trackpadMoveTimerId) {
+        const waitMs = Math.max(1, Math.ceil(targetIntervalMs - elapsed));
+        trackpadMoveTimerId = setTimeout(() => {
+          trackpadMoveTimerId = 0;
           flushTrackpadMoveNow(false);
-        });
+        }, waitMs);
       }
     }
 
@@ -6568,7 +6624,7 @@
             const pcH = (state.streamBounds && state.streamBounds.height) || 1080;
 
             const now = performance.now();
-            const dt = Math.max(8, Math.min(42, now - (lastTouchSampleTs || now - 10)));
+            const dt = Math.max(2, Math.min(42, now - (lastTouchSampleTs || now - 8)));
             lastTouchSampleTs = now;
             const stepHypot = Math.hypot(dx, dy);
             const instVelPxPerMs = stepHypot / dt;
@@ -6599,7 +6655,8 @@
             state.cursorNormX = norm.x;
             state.cursorNormY = norm.y;
             const now = performance.now();
-            if (now - lastMoveSendTs >= 8) {
+            const minDirectTouchInterval = Math.max(2.5, Math.min(8.3, 1000 / Math.max(60, getActiveTouchpadMonitorHz())));
+            if (now - lastMoveSendTs >= minDirectTouchInterval) {
               lastMoveSendTs = now;
               sendTouch('move', norm);
             }
@@ -7261,7 +7318,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.20.0';
+    let currentAppVer = '2.20.1';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();

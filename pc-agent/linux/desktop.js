@@ -83,7 +83,8 @@ function createDesktop(sys) {
           x: xOff,
           y: 0,
           width: w,
-          height: h
+          height: h,
+          refreshRate: 60
         });
         xOff += w;
       }
@@ -155,7 +156,7 @@ function createDesktop(sys) {
       const drm = readDrmFallback();
       if (drm.outputs.length > 0) return { ...drm, backend: 'drm' };
       return {
-        outputs: [{ name: 'WAYLAND-1', isPrimary: true, x: 0, y: 0, width: 1920, height: 1080 }],
+        outputs: [{ name: 'WAYLAND-1', isPrimary: true, x: 0, y: 0, width: 1920, height: 1080, refreshRate: 60 }],
         inactive: [],
         backend: 'wayland-default'
       };
@@ -186,6 +187,7 @@ function createDesktop(sys) {
         workY: work.y,
         workWidth: work.width,
         workHeight: work.height,
+        refreshRate: clamp(Math.round(Number(o.refreshRate) || 60), 24, 500),
         isBlackedOut: state.blackout.has(o.name),
         brightness: state.brightness.has(o.name) ? state.brightness.get(o.name) : 100
       };

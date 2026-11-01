@@ -592,7 +592,9 @@ function desktopRig(extra = {}) {
 test('get_monitors: MonitorData shape, work area, brightness/blackout flags', async () => {
   const { d, sys } = desktopRig();
   const m = await d.getMonitors();
-  assert.deepStrictEqual(Object.keys(m[0]).sort(), ['brightness', 'deviceName', 'friendlyName', 'height', 'id', 'index', 'isBlackedOut', 'isPrimary', 'width', 'workHeight', 'workWidth', 'workX', 'workY', 'x', 'y'].sort());
+  assert.deepStrictEqual(Object.keys(m[0]).sort(), ['brightness', 'deviceName', 'friendlyName', 'height', 'id', 'index', 'isBlackedOut', 'isPrimary', 'refreshRate', 'width', 'workHeight', 'workWidth', 'workX', 'workY', 'x', 'y'].sort());
+  assert.strictEqual(m[0].refreshRate, 60);
+  assert.strictEqual(m[1].refreshRate, 60);
   assert.deepStrictEqual([m[0].id, m[0].deviceName, m[0].isPrimary, m[0].y, m[0].workY, m[0].workHeight], ['MON_1', 'eDP-1', true, 180, 180, 1080]);
   assert.deepStrictEqual([m[1].id, m[1].x, m[1].workY, m[1].workHeight], ['MON_2', 1920, 27, 1413]);
   // blackout uses gamma 0 and is reported

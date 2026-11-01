@@ -10,31 +10,49 @@ function parseXrandr(text) {
   const outputs = [];
   const inactive = [];
   let screen = null;
+  let lastActiveOutput = null;
   for (const raw of String(text || '').split('\n')) {
     const line = raw.trimEnd();
     const s = /^Screen \d+:.*current (\d+) x (\d+)/.exec(line);
     if (s) {
       screen = { width: Number(s[1]), height: Number(s[2]) };
+      lastActiveOutput = null;
       continue;
     }
     const m = /^(\S+) connected( primary)?(?: (\d+)x(\d+)([+-]\d+)([+-]\d+))?/.exec(line);
-    if (!m) continue;
-    if (m[3] === undefined) {
-      inactive.push(m[1]);
+    if (m) {
+      if (m[3] === undefined) {
+        inactive.push(m[1]);
+        lastActiveOutput = null;
+        continue;
+      }
+      lastActiveOutput = {
+        name: m[1],
+        isPrimary: Boolean(m[2]),
+        x: Number(m[5]),
+        y: Number(m[6]),
+        width: Number(m[3]),
+        height: Number(m[4]),
+        refreshRate: 60
+      };
+      outputs.push(lastActiveOutput);
       continue;
     }
-    outputs.push({
-      name: m[1],
-      isPrimary: Boolean(m[2]),
-      x: Number(m[5]),
-      y: Number(m[6]),
-      width: Number(m[3]),
-      height: Number(m[4])
-    });
+    if (/^\S/.test(line)) {
+      lastActiveOutput = null;
+      continue;
+    }
+    if (lastActiveOutput && line.includes('*')) {
+      const hzMatch = /(\d+(?:\.\d+)?)\s*\*/.exec(line);
+      if (hzMatch) {
+        const hz = Math.round(Number(hzMatch[1]));
+        if (hz >= 24 && hz <= 500) lastActiveOutput.refreshRate = hz;
+      }
+    }
   }
   // Some virtual servers (old Xvfb) report no outputs at all: fall back to the screen size
   if (outputs.length === 0 && screen) {
-    outputs.push({ name: 'default', isPrimary: true, x: 0, y: 0, width: screen.width, height: screen.height, virtual: true });
+    outputs.push({ name: 'default', isPrimary: true, x: 0, y: 0, width: screen.width, height: screen.height, refreshRate: 60, virtual: true });
   }
   return sortMonitorOutputs(outputs, inactive, screen);
 }
@@ -80,6 +98,8 @@ function parseHyprMonitors(jsonText) {
     const x = Number(m.x) || 0;
     const y = Number(m.y) || 0;
     const res = Array.isArray(m.reserved) ? m.reserved : [0, 0, 0, 0]; // [left, top, right, bottom]
+    const rawHz = Number(m.refreshRate || m.refresh_rate) || 60;
+    const hz = rawHz > 1000 ? Math.round(rawHz / 1000) : Math.round(rawHz);
     outputs.push({
       name: String(m.name),
       isPrimary: Boolean(m.focused) || m.id === 0,
@@ -87,6 +107,7 @@ function parseHyprMonitors(jsonText) {
       y,
       width: w,
       height: h,
+      refreshRate: Math.max(24, Math.min(500, hz || 60)),
       workX: x + (Number(res[0]) || 0),
       workY: y + (Number(res[1]) || 0),
       workWidth: Math.max(200, w - (Number(res[0]) || 0) - (Number(res[2]) || 0)),
@@ -113,13 +134,16 @@ function parseSwayOutputs(jsonText) {
       continue;
     }
     const rect = o.rect || {};
+    const rawHz = Number((o.current_mode && o.current_mode.refresh) || o.refresh || 60);
+    const hz = rawHz > 1000 ? Math.round(rawHz / 1000) : Math.round(rawHz);
     outputs.push({
       name: String(o.name),
       isPrimary: Boolean(o.primary || o.focused),
       x: Number(rect.x) || 0,
       y: Number(rect.y) || 0,
       width: Number(rect.width) || 1920,
-      height: Number(rect.height) || 1080
+      height: Number(rect.height) || 1080,
+      refreshRate: Math.max(24, Math.min(500, hz || 60))
     });
   }
   return sortMonitorOutputs(outputs, inactive);
@@ -142,13 +166,16 @@ function parseKscreenMonitors(text) {
         }
         const pos = o.pos || { x: 0, y: 0 };
         const size = o.size || { width: 1920, height: 1080 };
+        const rawHz = Number(o.refreshRate || (o.currentMode && o.currentMode.refreshRate) || 60);
+        const hz = rawHz > 1000 ? Math.round(rawHz / 1000) : Math.round(rawHz);
         outputs.push({
           name: String(o.name),
           isPrimary: Boolean(o.primary || o.priority === 1),
           x: Number(pos.x) || 0,
           y: Number(pos.y) || 0,
           width: Number(size.width) || 1920,
-          height: Number(size.height) || 1080
+          height: Number(size.height) || 1080,
+          refreshRate: Math.max(24, Math.min(500, hz || 60))
         });
       }
       return sortMonitorOutputs(outputs, inactive);
@@ -167,7 +194,7 @@ function parseKscreenMonitors(text) {
       cur = {
         connected: !/\bdisconnected\b/i.test(line),
         enabled: /\benabled\b/i.test(line),
-        data: { name: h[1], isPrimary: /\bprimary\b/i.test(line) || /priority 1\b/i.test(line), x: 0, y: 0, width: 1920, height: 1080 }
+        data: { name: h[1], isPrimary: /\bprimary\b/i.test(line) || /priority 1\b/i.test(line), x: 0, y: 0, width: 1920, height: 1080, refreshRate: 60 }
       };
       const geo = /Geometry:\s*(-?\d+),(-?\d+)\s+(\d+)x(\d+)/i.exec(line);
       if (geo) {
@@ -189,6 +216,11 @@ function parseKscreenMonitors(text) {
       cur.data.y = Number(geo[2]);
       cur.data.width = Number(geo[3]);
       cur.data.height = Number(geo[4]);
+    }
+    const modeHz = /\d+x\d+@(\d+(?:\.\d+)?)\*/.exec(line);
+    if (modeHz) {
+      const hz = Math.round(Number(modeHz[1]));
+      if (hz >= 24 && hz <= 500) cur.data.refreshRate = hz;
     }
   }
   if (cur && cur.connected) {
@@ -214,13 +246,16 @@ function parseWlrRandr(text) {
         const curMode = (Array.isArray(o.modes) && o.modes.find((m) => m.current)) || (o.modes && o.modes[0]) || {};
         const pos = o.position || { x: 0, y: 0 };
         const scale = Number(o.scale) > 0 ? Number(o.scale) : 1;
+        const rawHz = Number(curMode.refresh || 60);
+        const hz = rawHz > 1000 ? Math.round(rawHz / 1000) : Math.round(rawHz);
         outputs.push({
           name: String(o.name),
           isPrimary: outputs.length === 0,
           x: Number(pos.x) || 0,
           y: Number(pos.y) || 0,
           width: Math.round((Number(curMode.width) || 1920) / scale),
-          height: Math.round((Number(curMode.height) || 1080) / scale)
+          height: Math.round((Number(curMode.height) || 1080) / scale),
+          refreshRate: Math.max(24, Math.min(500, hz || 60))
         });
       }
       return sortMonitorOutputs(outputs, inactive);
@@ -235,7 +270,7 @@ function parseWlrRandr(text) {
         else inactive.push(cur.data.name);
       }
       const name = line.trim().split(/\s+/)[0];
-      cur = { enabled: true, data: { name, isPrimary: outputs.length === 0, x: 0, y: 0, width: 1920, height: 1080 } };
+      cur = { enabled: true, data: { name, isPrimary: outputs.length === 0, x: 0, y: 0, width: 1920, height: 1080, refreshRate: 60 } };
       continue;
     }
     if (!cur) continue;
@@ -246,10 +281,14 @@ function parseWlrRandr(text) {
       cur.data.x = Number(pos[1]);
       cur.data.y = Number(pos[2]);
     }
-    const mode = /^\s*(\d+)x(\d+)\s+px,.*current/i.exec(line);
+    const mode = /^\s*(\d+)x(\d+)\s+px,(?:\s*(\d+(?:\.\d+)?)\s*Hz)?.*current/i.exec(line);
     if (mode) {
       cur.data.width = Number(mode[1]);
       cur.data.height = Number(mode[2]);
+      if (mode[3]) {
+        const hz = Math.round(Number(mode[3]));
+        if (hz >= 24 && hz <= 500) cur.data.refreshRate = hz;
+      }
     }
   }
   if (cur) {

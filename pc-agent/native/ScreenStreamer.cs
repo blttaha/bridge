@@ -1261,8 +1261,8 @@ namespace TahaBLT
                 }
                 else if (waitMs > 0)
                 {
-                    // GDI has no change notification: poll at ~60 Hz
-                    Thread.Sleep(Math.Min(waitMs, 16));
+                    // GDI has no change notification: poll at the requested monitor refresh rate
+                    Thread.Sleep(Math.Max(2, Math.Min(waitMs, 16)));
                 }
 
                 if (!gdiReady) gdiReady = gdi.Initialize(srcW, srcH);
@@ -1438,9 +1438,9 @@ namespace TahaBLT
 
             private void ProduceFrame(StreamRequest r)
             {
-                // When DXGI is active at 60 FPS, AcquireNextFrame already blocks until the display's VSync;
-                // pre-sleeping with Thread.Sleep(1) can overshoot the VSync edge and drop 60 FPS down to 30 FPS.
-                if (r.Mode == 0 && (!dxgi.IsReady || r.Fps < 55))
+                // When DXGI is active or running at >=60 Hz, AcquireNextFrame paces at the display's native VSync;
+                // pre-sleeping with Thread.Sleep(1) can overshoot the VSync edge.
+                if (r.Mode == 0 && r.Fps < 55)
                 {
                     long minGap = 750 / Math.Max(10, r.Fps);
                     while (frameClock.ElapsedMilliseconds - lastFrameMs < minGap) Thread.Sleep(1);
@@ -1461,10 +1461,11 @@ namespace TahaBLT
                 bool cursorChanged = false;
 
                 int waitBudget = (key || refine) ? 0 : r.WaitMs;
+                int nativeSliceMs = Math.Max(4, Math.Min(16, 1000 / Math.Max(30, r.Fps)));
                 while (true)
                 {
                     int remaining = Math.Max(0, waitBudget - (int)sw.ElapsedMilliseconds);
-                    int slice = Math.Min(remaining, 16);
+                    int slice = Math.Min(remaining, nativeSliceMs);
                     var res = CaptureOnce(key ? 50 : slice, key);
                     if (res == CaptureResult.NewFrame)
                     {
