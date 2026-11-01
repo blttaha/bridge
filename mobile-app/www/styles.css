@@ -4418,20 +4418,43 @@ select.input-field {
 .remote-workstation.is-screen-off #remoteMonitorSelector,
 .remote-workstation.is-screen-off #remoteModeToggleGroup,
 .remote-workstation.is-screen-off #remoteLiveKbdBtn,
-.remote-workstation.is-screen-off #remoteFullscreenBtn,
 .remote-workstation.is-screen-off .remote-canvas-stage,
-.remote-workstation.is-screen-off .remote-scroll-strip,
-.remote-workstation.is-screen-off .remote-overlay-badges,
+.remote-workstation.is-screen-off #remoteFpsBadge,
+.remote-workstation.is-screen-off #hudModeToggleBtn,
+.remote-workstation.is-screen-off #hudMonitorCycleBtn,
+.remote-workstation.is-screen-off #hudKeyboardBtn,
 .remote-workstation.is-screen-off .keyboard-panel {
   display: none !important;
 }
 
-.remote-workstation.is-screen-off .remote-viewport-box {
+.remote-workstation.is-screen-off:not(.is-fullscreen) .remote-viewport-box {
   height: 216px;
   min-height: 216px;
   max-height: 216px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: linear-gradient(180deg, rgba(24, 24, 28, 0.96) 0%, rgba(14, 14, 17, 0.98) 100%);
+}
+
+.remote-workstation.is-screen-off.is-fullscreen .remote-viewport-box {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  border: none;
+  border-radius: 0;
+  background: linear-gradient(180deg, #16161A 0%, #0D0D10 100%);
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+.remote-workstation.is-screen-off.is-fullscreen .laptop-touchpad-buttons {
+  height: calc(56px + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+}
+
+.laptop-tp-btn.is-holding {
+  background-color: rgba(16, 185, 129, 0.22);
+  color: #34D399;
 }
 
 .trackpad-surface-overlay {

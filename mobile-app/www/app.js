@@ -2504,7 +2504,7 @@
     const nameInput = document.getElementById('macroNameInput');
     if (nameInput) nameInput.value = existingMacro ? existingMacro.name || '' : '';
 
-    const keyInput = document.getElementById('macroCustomKeyInput');
+    const keyInput = document.getElementById('macroBaseKeySelect') || document.getElementById('macroCustomKeyInput');
     if (keyInput) keyInput.value = '';
 
     const textInput = document.getElementById('macroTextStepInput');
@@ -2520,7 +2520,7 @@
 
   function renderMacroComposerSteps() {
     const badge = document.getElementById('macroStepsCountBadge');
-    const listEl = document.getElementById('macroStepsEditorList');
+    const listEl = document.getElementById('macroStepsListContainer') || document.getElementById('macroStepsEditorList');
     if (badge) badge.textContent = `${state.macroSteps.length} Adım`;
     if (!listEl) return;
 
@@ -2915,8 +2915,10 @@
     const badgeEl = document.getElementById('remoteDragStateBadge');
     const lockBtn = document.getElementById('mouseBtnDragLock');
     const hudLockBtn = document.getElementById('hudDragLockBtn');
+    const tpLeftBtn = document.querySelector('#laptopTouchpadButtons [data-mouse-btn="left"]');
 
     if (badgeEl) badgeEl.classList.toggle('hidden', !state.isLeftButtonHeld);
+    if (tpLeftBtn) tpLeftBtn.classList.toggle('is-holding', state.isLeftButtonHeld);
     if (lockBtn) {
       lockBtn.classList.toggle('is-holding', state.isLeftButtonHeld);
       lockBtn.textContent = state.isLeftButtonHeld ? 'Bırak (Sürükleniyor)' : 'Basılı Tut (Sürükle)';
@@ -2934,7 +2936,7 @@
     const payload = {
       type: hold ? 'mouse_down' : 'mouse_up',
       button: 'left',
-      monitorIndex: state.remoteMonitorIndex
+      monitorIndex: state.isStreaming ? state.remoteMonitorIndex : -1
     };
     if (typeof normX === 'number' && typeof normY === 'number') {
       payload.x = normX;
@@ -2984,7 +2986,7 @@
 
     try {
       if (window.TahaNative && typeof window.TahaNative.setLandscapeFullscreen === 'function') {
-        window.TahaNative.setLandscapeFullscreen(state.isFullscreen);
+        window.TahaNative.setLandscapeFullscreen(Boolean(state.isFullscreen && state.isStreaming));
       }
     } catch {}
   }
@@ -5802,6 +5804,8 @@
     let totalMovedPx = 0;
     let touchStartTs = 0;
     let lastTapTs = 0;
+    let isSecondTapTouch = false;
+    let trackpadDragHoldActive = false;
     let holdTimer = null;
     let autoHoldTriggered = false;
     let directDragActive = false;
@@ -5810,6 +5814,27 @@
     // Touch mode: the finger is a real Windows touch contact (Windows does tap/scroll/hold/drag itself)
     let touchContactDown = false;
     let lastTouchSent = { x: -1, y: -1 };
+
+    function getPadTouches(touchList) {
+      const out = [];
+      for (let i = 0; i < touchList.length; i++) {
+        const pt = touchList[i];
+        const tgt = pt.target;
+        if (
+          tgt &&
+          tgt.closest &&
+          (tgt.closest('#laptopTouchpadButtons') ||
+            tgt.closest('.laptop-touchpad-buttons') ||
+            tgt.closest('.remote-scroll-strip') ||
+            tgt.closest('.remote-floating-hud') ||
+            tgt.closest('.remote-overlay-badges'))
+        ) {
+          continue;
+        }
+        out.push(pt);
+      }
+      return out;
+    }
 
     function sendTouch(phase, norm) {
       const x = Number(norm.x.toFixed(4));
@@ -5887,22 +5912,27 @@
         }
         e.preventDefault();
         const effectiveMode = state.isStreaming ? state.remoteInputMode : 'trackpad';
+        const padTouches = getPadTouches(e.touches);
 
-        touchCount = e.touches.length;
+        touchCount = padTouches.length;
         clearHoldTimer();
 
         if (touchCount === 2) {
           // Second finger = zoom/pan the phone view: the first finger must not keep pressing on the PC
           if (effectiveMode === 'direct') endTouchContact('cancel');
-          const dx = e.touches[0].clientX - e.touches[1].clientX;
-          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          if (trackpadDragHoldActive) {
+            trackpadDragHoldActive = false;
+            setLeftButtonHold(false);
+          }
+          const dx = padTouches[0].clientX - padTouches[1].clientX;
+          const dy = padTouches[0].clientY - padTouches[1].clientY;
           pinchStartDist = Math.hypot(dx, dy);
           pinchStartZoom = state.zoomScale;
           pinchStartPanX = state.panX;
           pinchStartPanY = state.panY;
 
-          const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-          const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const midX = (padTouches[0].clientX + padTouches[1].clientX) / 2;
+          const midY = (padTouches[0].clientY + padTouches[1].clientY) / 2;
           const vpRect = viewport.getBoundingClientRect();
           pinchFocalOffsetX = midX - (vpRect.left + vpRect.width / 2);
           pinchFocalOffsetY = midY - (vpRect.top + vpRect.height / 2);
@@ -5914,7 +5944,7 @@
         }
 
         if (touchCount === 1) {
-          const t = e.touches[0];
+          const t = padTouches[0];
           startX = t.clientX;
           startY = t.clientY;
           lastX = t.clientX;
@@ -5925,20 +5955,33 @@
           touchStartTs = performance.now();
           autoHoldTriggered = false;
           directDragActive = false;
+          trackpadDragHoldActive = false;
 
           if (effectiveMode === 'trackpad') {
-            // Long-press (holding finger still for 360ms) triggers Right Click in Mouse mode too!
-            holdTimer = setTimeout(() => {
-              if (totalMovedPx < 10 && !state.isLeftButtonHeld) {
-                autoHoldTriggered = true;
-                triggerHaptic(28);
-                sendFastInput({
-                  type: 'mouse_click',
-                  button: 'right'
-                });
-              }
-            }, 360);
+            isSecondTapTouch = touchStartTs - lastTapTs < 340;
+            if (isSecondTapTouch) {
+              // Double-tap & hold on Touchpad = Left Click Hold (drag) until finger is released!
+              holdTimer = setTimeout(() => {
+                if (touchCount === 1 && !trackpadDragHoldActive) {
+                  trackpadDragHoldActive = true;
+                  setLeftButtonHold(true);
+                }
+              }, 135);
+            } else {
+              // Long-press on first touch (holding finger still for 380ms) triggers Right Click
+              holdTimer = setTimeout(() => {
+                if (totalMovedPx < 10 && !state.isLeftButtonHeld && !trackpadDragHoldActive) {
+                  autoHoldTriggered = true;
+                  triggerHaptic(28);
+                  sendFastInput({
+                    type: 'mouse_click',
+                    button: 'right'
+                  });
+                }
+              }, 380);
+            }
           } else {
+            isSecondTapTouch = false;
             const norm = computeImageNormalizedCoords(t.clientX, t.clientY);
             directStartNorm = { x: norm.x, y: norm.y };
             state.cursorNormX = norm.x;
@@ -5971,15 +6014,16 @@
         }
         e.preventDefault();
         const effectiveMode = state.isStreaming ? state.remoteInputMode : 'trackpad';
+        const padTouches = getPadTouches(e.touches);
 
         // 2-Finger Pinch-to-Zoom (anchored to pinch focal point!) OR 2-Finger Scroll
-        if (e.touches.length === 2) {
+        if (padTouches.length === 2) {
           clearHoldTimer();
-          const dx = e.touches[0].clientX - e.touches[1].clientX;
-          const dy = e.touches[0].clientY - e.touches[1].clientY;
+          const dx = padTouches[0].clientX - padTouches[1].clientX;
+          const dy = padTouches[0].clientY - padTouches[1].clientY;
           const dist = Math.hypot(dx, dy);
-          const avgX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-          const avgY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const avgX = (padTouches[0].clientX + padTouches[1].clientX) / 2;
+          const avgY = (padTouches[0].clientY + padTouches[1].clientY) / 2;
 
           if (state.isStreaming && Math.abs(dist - pinchStartDist) > 14) {
             twoFingerMoved = true;
@@ -6014,22 +6058,26 @@
           return;
         }
 
-        if (e.touches.length === 1 && touchCount === 1) {
-          const t = e.touches[0];
+        if (padTouches.length === 1 && touchCount === 1) {
+          const t = padTouches[0];
           const dx = t.clientX - lastX;
           const dy = t.clientY - lastY;
           lastX = t.clientX;
           lastY = t.clientY;
           totalMovedPx += Math.hypot(dx, dy);
 
-          if (totalMovedPx > 10) {
+          if (effectiveMode === 'trackpad' && isSecondTapTouch && !trackpadDragHoldActive && totalMovedPx > 4) {
+            clearHoldTimer();
+            trackpadDragHoldActive = true;
+            setLeftButtonHold(true);
+          } else if (totalMovedPx > 10) {
             clearHoldTimer();
           }
 
           if (effectiveMode === 'trackpad') {
             // Sub-pixel relative hardware mouse movement for zero-stutter 60+ FPS cursor control
-            const boxW = Math.max(240, screenImg.clientWidth || viewport.clientWidth || 340);
-            const boxH = Math.max(150, screenImg.clientHeight || viewport.clientHeight || 220);
+            const boxW = Math.max(240, (state.isStreaming && screenImg.clientWidth) || viewport.clientWidth || 340);
+            const boxH = Math.max(150, (state.isStreaming && screenImg.clientHeight) || viewport.clientHeight || 220);
             const pcW = (state.streamBounds && state.streamBounds.width) || 1920;
             const pcH = (state.streamBounds && state.streamBounds.height) || 1080;
 
@@ -6060,7 +6108,7 @@
                 lastMoveSendTs = now;
                 sendFastInput({
                   type: 'mouse_move_rel',
-                  monitorIndex: state.remoteMonitorIndex,
+                  monitorIndex: state.isStreaming ? state.remoteMonitorIndex : -1,
                   dx: stepX,
                   dy: stepY
                 });
@@ -6086,9 +6134,10 @@
       (e) => {
         clearHoldTimer();
         const effectiveMode = state.isStreaming ? state.remoteInputMode : 'trackpad';
+        const padTouches = getPadTouches(e.touches);
 
         // 2-Finger Tap = Right Click at cursor!
-        if (touchCount === 2 && e.touches.length === 0) {
+        if (touchCount === 2 && padTouches.length === 0) {
           if (!twoFingerMoved) {
             triggerHaptic(16);
             if (effectiveMode === 'trackpad') {
@@ -6107,7 +6156,7 @@
           return;
         }
 
-        if (effectiveMode === 'direct' && e.touches.length === 0) {
+        if (effectiveMode === 'direct' && padTouches.length === 0) {
           if (touchContactDown) {
             const t = e.changedTouches && e.changedTouches[0];
             if (t) {
@@ -6121,7 +6170,7 @@
           return;
         }
 
-        if (touchCount === 1 && e.touches.length === 0 && effectiveMode === 'trackpad') {
+        if (touchCount === 1 && padTouches.length === 0 && effectiveMode === 'trackpad') {
           // Moves are sent at most every 12 ms; whatever accumulated since the last send would otherwise be lost and
           // the PC cursor would end a little short of where the phone shows it
           const stepX = Math.round(relAccX);
@@ -6129,14 +6178,30 @@
           relAccX = 0;
           relAccY = 0;
           if (stepX !== 0 || stepY !== 0) {
-            sendFastInput({ type: 'mouse_move_rel', monitorIndex: state.remoteMonitorIndex, dx: stepX, dy: stepY });
+            sendFastInput({
+              type: 'mouse_move_rel',
+              monitorIndex: state.isStreaming ? state.remoteMonitorIndex : -1,
+              dx: stepX,
+              dy: stepY
+            });
           }
         }
 
-        if (touchCount === 1 && e.touches.length === 0) {
+        if (touchCount === 1 && padTouches.length === 0) {
+          // Release double-tap-and-hold drag when finger lifts off touchpad
+          if (trackpadDragHoldActive) {
+            trackpadDragHoldActive = false;
+            isSecondTapTouch = false;
+            lastTapTs = 0;
+            setLeftButtonHold(false);
+            touchCount = 0;
+            return;
+          }
+
           // If long-press right click was already triggered during this touch, do nothing on lift!
           if (autoHoldTriggered) {
             autoHoldTriggered = false;
+            isSecondTapTouch = false;
             touchCount = 0;
             return;
           }
@@ -6152,7 +6217,7 @@
           const maxTapMove = effectiveMode === 'direct' ? 16 : 11;
           if (totalMovedPx < maxTapMove) {
             const now = performance.now();
-            const isDouble = now - lastTapTs < 310;
+            const isDouble = now - lastTapTs < 340;
             lastTapTs = isDouble ? 0 : now;
 
             triggerHaptic(10);
@@ -6175,6 +6240,7 @@
             }
           }
 
+          isSecondTapTouch = false;
           touchCount = 0;
         }
       },
@@ -6183,6 +6249,11 @@
 
     viewport.addEventListener('touchcancel', () => {
       clearHoldTimer();
+      if (trackpadDragHoldActive) {
+        trackpadDragHoldActive = false;
+        isSecondTapTouch = false;
+        setLeftButtonHold(false);
+      }
       endTouchContact('cancel');
       touchCount = 0;
     });
@@ -6688,7 +6759,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.0';
+    let currentAppVer = '2.19.1';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -8344,8 +8415,10 @@
         document.querySelectorAll('[data-app-source]').forEach((t) => t.classList.remove('active'));
         tab.classList.add('active');
         state.composerAppSource = tab.getAttribute('data-app-source');
-        document.getElementById('installedAppPickerGroup').classList.toggle('hidden', state.composerAppSource !== 'installed');
-        document.getElementById('customAppPickerGroup').classList.toggle('hidden', state.composerAppSource !== 'custom');
+        const instGroup = document.getElementById('installedAppPickerGroup');
+        if (instGroup) instGroup.classList.toggle('hidden', state.composerAppSource !== 'installed');
+        const custGroup = document.getElementById('customAppPickerGroup');
+        if (custGroup) custGroup.classList.toggle('hidden', state.composerAppSource !== 'custom');
       });
     });
 
@@ -8399,8 +8472,10 @@
         launchArgs = app.launchArgs || '';
         icon = app.icon || '';
       } else {
-        appName = document.getElementById('customAppNameInput').value.trim();
-        launchPath = document.getElementById('customAppPathInput').value.trim();
+        const custNameEl = document.getElementById('customAppNameInput');
+        const custPathEl = document.getElementById('customAppPathInput');
+        appName = custNameEl ? custNameEl.value.trim() : '';
+        launchPath = custPathEl ? custPathEl.value.trim() : '';
         processName = appName;
         if (!appName) {
           showToast('Uygulama adını girin');
@@ -8764,10 +8839,13 @@
     document.getElementById('remoteLiveKbdBtn').addEventListener('click', openLiveKeyboard);
     document.getElementById('hudKeyboardBtn').addEventListener('click', openLiveKeyboard);
 
-    document.getElementById('startStreamBtn').addEventListener('click', () => {
-      triggerHaptic(12);
-      startRemoteStream();
-    });
+    const startStreamBtnEl = document.getElementById('startStreamBtn');
+    if (startStreamBtnEl) {
+      startStreamBtnEl.addEventListener('click', () => {
+        triggerHaptic(12);
+        startRemoteStream();
+      });
+    }
 
     // Keyboard Category Tabs
     document.querySelectorAll('[data-kbd-cat]').forEach((btn) => {
@@ -9156,12 +9234,12 @@
     const macroModPills = document.getElementById('macroModPills');
     if (macroModPills) {
       macroModPills.addEventListener('click', (e) => {
-        const pill = e.target.closest('[data-macro-mod]');
+        const pill = e.target.closest('[data-mod],[data-macro-mod]');
         if (!pill) return;
         triggerHaptic(8);
         pill.classList.toggle('active');
-        state.macroActiveMods = Array.from(macroModPills.querySelectorAll('.macro-mod-pill.active')).map((b) =>
-          b.getAttribute('data-macro-mod')
+        state.macroActiveMods = Array.from(macroModPills.querySelectorAll('.macro-mod-pill.active')).map(
+          (b) => b.getAttribute('data-mod') || b.getAttribute('data-macro-mod')
         );
       });
     }
@@ -9170,11 +9248,11 @@
     if (addMacroKeyStepBtn) {
       addMacroKeyStepBtn.addEventListener('click', () => {
         triggerHaptic(10);
-        const keyInput = document.getElementById('macroCustomKeyInput');
+        const keyInput = document.getElementById('macroBaseKeySelect') || document.getElementById('macroCustomKeyInput');
         const rawKey = keyInput ? keyInput.value.trim().toUpperCase() : '';
         const mods = Array.isArray(state.macroActiveMods) ? state.macroActiveMods : [];
         if (!rawKey && !mods.length) {
-          showToast('Lütfen bir tuş yazın veya üstten kısayol seçin');
+          showToast('Lütfen bir tuş seçin veya üstten kısayol işaretleyin');
           return;
         }
         const parts = [...mods];
@@ -9232,14 +9310,15 @@
     if (addMacroDelayStepBtn) {
       addMacroDelayStepBtn.addEventListener('click', () => {
         triggerHaptic(10);
-        const sel = document.getElementById('macroDelaySelect');
-        const ms = Number((sel && sel.value) || 250);
+        const sel = document.getElementById('macroDelayStepInput') || document.getElementById('macroDelaySelect');
+        const ms = Math.max(20, Number((sel && sel.value) || 250));
         state.macroSteps.push({ type: 'delay', delayMs: ms, value: `${ms}ms` });
         renderMacroComposerSteps();
       });
     }
 
-    const macroStepsEditorList = document.getElementById('macroStepsEditorList');
+    const macroStepsEditorList =
+      document.getElementById('macroStepsListContainer') || document.getElementById('macroStepsEditorList');
     if (macroStepsEditorList) {
       macroStepsEditorList.addEventListener('click', (e) => {
         const remBtn = e.target.closest('[data-remove-macro-step]');
@@ -9251,15 +9330,20 @@
       });
     }
 
-    const saveMacroConfirmBtn = document.getElementById('saveMacroConfirmBtn');
+    const saveMacroConfirmBtn =
+      document.getElementById('saveMacroModalBtn') || document.getElementById('saveMacroConfirmBtn');
     if (saveMacroConfirmBtn) {
       saveMacroConfirmBtn.addEventListener('click', async () => {
         triggerHaptic(14);
-        const keyInput = document.getElementById('macroCustomKeyInput');
-        if (!state.macroSteps.length && keyInput && keyInput.value.trim()) {
+        const keyInput = document.getElementById('macroBaseKeySelect') || document.getElementById('macroCustomKeyInput');
+        if (!state.macroSteps.length && keyInput && (keyInput.value.trim() || (state.macroActiveMods && state.macroActiveMods.length))) {
           const rawKey = keyInput.value.trim().toUpperCase();
           const mods = Array.isArray(state.macroActiveMods) ? state.macroActiveMods : [];
-          state.macroSteps.push({ type: 'key', value: [...mods, rawKey].join('+') });
+          const parts = [...mods];
+          if (rawKey && !parts.includes(rawKey)) parts.push(rawKey);
+          if (parts.length) {
+            state.macroSteps.push({ type: 'key', value: parts.join('+') });
+          }
           keyInput.value = '';
         }
         const nameIn = document.getElementById('macroNameInput');
@@ -9332,11 +9416,46 @@
 
     const laptopTouchpadButtons = document.getElementById('laptopTouchpadButtons');
     if (laptopTouchpadButtons) {
+      let leftBtnHoldTimer = null;
+      let leftBtnHeldByTouch = false;
+
+      laptopTouchpadButtons.addEventListener(
+        'touchstart',
+        (e) => {
+          const btn = e.target.closest('[data-mouse-btn="left"]');
+          if (!btn) return;
+          e.stopPropagation();
+          leftBtnHeldByTouch = false;
+          clearTimeout(leftBtnHoldTimer);
+          leftBtnHoldTimer = setTimeout(() => {
+            leftBtnHeldByTouch = true;
+            setLeftButtonHold(true);
+          }, 150);
+        },
+        { passive: true }
+      );
+
+      const endLeftBtnHold = (e) => {
+        clearTimeout(leftBtnHoldTimer);
+        if (leftBtnHeldByTouch) {
+          if (e && e.cancelable) e.preventDefault();
+          leftBtnHeldByTouch = false;
+          setLeftButtonHold(false);
+        }
+      };
+
+      laptopTouchpadButtons.addEventListener('touchend', endLeftBtnHold);
+      laptopTouchpadButtons.addEventListener('touchcancel', endLeftBtnHold);
+
       laptopTouchpadButtons.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-mouse-btn]');
         if (!btn) return;
         e.stopPropagation();
         const mouseBtn = btn.getAttribute('data-mouse-btn') || 'left';
+        if (mouseBtn === 'left' && state.isLeftButtonHeld) {
+          setLeftButtonHold(false);
+          return;
+        }
         triggerHaptic(12);
         sendFastInput({ type: 'mouse_click', button: mouseBtn });
       });
