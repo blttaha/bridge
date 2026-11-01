@@ -4447,6 +4447,11 @@ select.input-field {
   padding-bottom: var(--safe-bottom);
 }
 
+.remote-workstation.is-screen-off.is-fullscreen .remote-scroll-strip,
+.remote-workstation.is-screen-off .remote-scroll-strip {
+  display: none !important;
+}
+
 .remote-workstation.is-screen-off.is-fullscreen .laptop-touchpad-buttons {
   height: calc(56px + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
@@ -4699,3 +4704,164 @@ select.input-field {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* =========================================================================
+   UNIVERSAL PAGE LAYOUT EDIT & MAGNETIC DRAG-AND-DROP ENGINE
+   ========================================================================= */
+.layout-edit-banner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(68px + var(--safe-bottom));
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background-color: rgba(18, 18, 22, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.layout-edit-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.layout-edit-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #10B981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+  flex-shrink: 0;
+}
+
+.layout-edit-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+body.layout-edit-mode [data-layout-id] {
+  position: relative;
+  border: 1.5px dashed rgba(255, 255, 255, 0.24) !important;
+  border-radius: 14px !important;
+  padding: 12px !important;
+  margin-bottom: 12px !important;
+  background-color: rgba(24, 24, 28, 0.72) !important;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), border-color 150ms ease, box-shadow 150ms ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body.layout-edit-mode [data-layout-id] > *:not(.layout-item-toolbar) {
+  pointer-events: none !important;
+  opacity: 0.88;
+}
+
+.layout-item-toolbar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  cursor: grab;
+  touch-action: none;
+}
+
+body.layout-edit-mode .layout-item-toolbar {
+  display: flex;
+}
+
+.layout-item-grip-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.layout-item-grip-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--ink-secondary);
+  flex-shrink: 0;
+}
+
+.layout-item-grip-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout-item-step-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.layout-step-btn {
+  width: 28px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--ink-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.layout-step-btn:active {
+  background-color: #FFFFFF;
+  color: #09090B;
+}
+
+.layout-step-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+body.layout-edit-mode [data-layout-id].is-layout-dragging {
+  z-index: 80 !important;
+  border: 1.5px solid #FFFFFF !important;
+  background-color: rgba(28, 28, 34, 0.96) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.65) !important;
+  transition: none !important;
+}
+
+.layout-magnet-slot {
+  border: 2px dashed rgba(16, 185, 129, 0.68);
+  background-color: rgba(16, 185, 129, 0.07);
+  border-radius: 14px;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+  transition: height 150ms ease;
+}
+

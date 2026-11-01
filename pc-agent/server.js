@@ -1596,8 +1596,134 @@ async function createSnapshotScene(customName) {
 
 // Execute a single Quick Launch item or a multi-item Quick Action button
 async function executeQuickItemBridge(item) {
+  const tType = String(item.targetType || 'file').toLowerCase();
   let targetPath = String(item.targetPath || item.launchPath || '').trim();
   let extraArgs = String(item.arguments || item.launchArgs || '').trim();
+
+  if (tType === 'macro') {
+    const mac = macros.find((m) => m.id === item.macroId || m.id === targetPath || m.name === item.name);
+    if (!mac) throw new Error('Seçili makro bulunamadı');
+    const r = await executeMacro(mac);
+    return { ok: true, macroResult: r };
+  }
+
+  if (tType === 'scene') {
+    const sc = scenes.find((s) => s.id === item.sceneId || s.id === targetPath || s.name === item.name);
+    if (!sc) throw new Error('Seçili çalışma sahnesi bulunamadı');
+    const r = await executeScene(sc);
+    return { ok: true, sceneResult: r };
+  }
+
+  if (tType === 'system_action') {
+    const code = String(item.actionCode || targetPath || '').trim();
+    switch (code) {
+      case 'sys:toggle_lock':
+        await bridge.call('system_control', { action: 'toggle_lock' }, 4500);
+        return { ok: true };
+      case 'sys:lock':
+        await bridge.call('system_control', { action: 'lock' }, 4500);
+        return { ok: true };
+      case 'sys:unlock':
+        await bridge.call('system_control', { action: 'unlock' }, 4500);
+        return { ok: true };
+      case 'sys:sleep':
+        await bridge.call('system_control', { action: 'sleep' }, 4500);
+        return { ok: true };
+      case 'sys:hibernate':
+        await bridge.call('system_control', { action: 'hibernate' }, 4500);
+        return { ok: true };
+      case 'sys:restart':
+        await bridge.call('system_control', { action: 'restart' }, 4500);
+        return { ok: true };
+      case 'sys:shutdown':
+        await bridge.call('system_control', { action: 'shutdown' }, 4500);
+        return { ok: true };
+      case 'sys:signout':
+        await bridge.call('system_control', { action: 'signout' }, 4500);
+        return { ok: true };
+      case 'mon:off':
+        await bridge.call('monitor_power', { action: 'off' }, 4500);
+        return { ok: true };
+      case 'mon:on':
+        await bridge.call('monitor_power', { action: 'on', clearBlackouts: true }, 4500);
+        return { ok: true };
+      case 'win:show_desktop':
+        await bridge.call('window_action', { action: 'show_desktop' }, 4500);
+        return { ok: true };
+      case 'win:minimize_all':
+        await bridge.call('window_action', { action: 'minimize_all' }, 4500);
+        return { ok: true };
+      case 'disp:extend':
+      case 'disp:clone':
+      case 'disp:internal':
+      case 'disp:external':
+        await bridge.call('display_topology', { mode: code.split(':')[1] }, 6500);
+        return { ok: true };
+      case 'audio:toggle_mute':
+        await runAudioControl({ action: 'toggle_master_mute' });
+        return { ok: true };
+      case 'audio:toggle_mic':
+        await runAudioControl({ action: 'toggle_mic_mute' });
+        return { ok: true };
+      case 'media:play_pause':
+        await bridge.call('send_input', { type: 'key', key: 'MEDIA_PLAY_PAUSE' }, 2500);
+        scheduleFastMediaSync();
+        return { ok: true };
+      case 'media:next':
+        await bridge.call('send_input', { type: 'key', key: 'MEDIA_NEXT' }, 2500);
+        scheduleFastMediaSync();
+        return { ok: true };
+      case 'media:prev':
+        await bridge.call('send_input', { type: 'key', key: 'MEDIA_PREV' }, 2500);
+        scheduleFastMediaSync();
+        return { ok: true };
+      case 'media:vol_up':
+        await bridge.call('send_input', { type: 'key', key: 'VOLUME_UP' }, 2500);
+        return { ok: true };
+      case 'media:vol_down':
+        await bridge.call('send_input', { type: 'key', key: 'VOLUME_DOWN' }, 2500);
+        return { ok: true };
+      case 'wireless:wifi_on':
+        await bridge.call('wireless_control', { action: 'wifi_toggle', enable: true }, 9000);
+        return { ok: true };
+      case 'wireless:wifi_off':
+        await bridge.call('wireless_control', { action: 'wifi_toggle', enable: false }, 9000);
+        return { ok: true };
+      case 'wireless:hotspot_on':
+        await bridge.call('wireless_control', { action: 'hotspot_toggle', enable: true }, 10000);
+        return { ok: true };
+      case 'wireless:hotspot_off':
+        await bridge.call('wireless_control', { action: 'hotspot_toggle', enable: false }, 10000);
+        return { ok: true };
+      case 'wireless:bt_on':
+        await bridge.call('wireless_control', { action: 'bt_toggle', enable: true }, 9000);
+        return { ok: true };
+      case 'wireless:bt_off':
+        await bridge.call('wireless_control', { action: 'bt_toggle', enable: false }, 9000);
+        return { ok: true };
+      case 'maint:flush_dns':
+        await bridge.call('system_control', { action: 'flush_dns' }, 6500);
+        return { ok: true };
+      case 'maint:optimize_ram':
+        await bridge.call('system_control', { action: 'optimize_ram' }, 6500);
+        return { ok: true };
+      case 'maint:empty_recycle_bin':
+        await bridge.call('system_control', { action: 'empty_recycle_bin' }, 6500);
+        return { ok: true };
+      case 'key:SCREENSHOT':
+        await bridge.call('send_input', { type: 'key', key: 'WIN+SHIFT+S' }, 2500);
+        return { ok: true };
+      case 'key:TASKMGR':
+        await bridge.call('send_input', { type: 'key', key: 'CTRL+SHIFT+ESC' }, 2500);
+        return { ok: true };
+      default:
+        if (code.startsWith('key:')) {
+          await bridge.call('send_input', { type: 'key', key: code.slice(4) }, 2500);
+          return { ok: true };
+        }
+        throw new Error('Bilinmeyen sistem işlemi: ' + code);
+    }
+  }
 
   // Special handling for Discord updater
   if (
@@ -1634,9 +1760,14 @@ async function executeQuickItemBridge(item) {
 
 async function executeQuickAction(qa, onProgress) {
   const startedAt = Date.now();
-  await bridge.call('monitor_power', { action: 'on', clearBlackouts: false }).catch(() => {});
-
   const items = Array.isArray(qa.items) ? qa.items : [];
+  const shouldWakeScreen = items.some((it) => {
+    const t = String((it && it.targetType) || 'file').toLowerCase();
+    return t === 'app' || t === 'file' || t === 'folder' || t === 'url' || t === 'scene';
+  });
+  if (shouldWakeScreen) {
+    await bridge.call('monitor_power', { action: 'on', clearBlackouts: false }).catch(() => {});
+  }
   const results = [];
 
   if (qa.executionMode === 'sequential') {

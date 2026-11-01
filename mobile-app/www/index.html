@@ -57,8 +57,8 @@
       <section class="standalone-view" id="view-device-hub">
         <div class="hub-tabs-track" id="hubTabsTrack">
           <!-- HUB TAB 1: CİHAZLAR (KAYITLI BİLGİSAYARLAR & 8 HANELİ GÜVENLİK KODU EŞLEŞTİRME) -->
-          <div class="hub-tab-panel active" id="hub-tab-devices">
-            <div class="section-block hidden" id="hubSavedDevicesSection">
+          <div class="hub-tab-panel active" id="hub-tab-devices" data-layout-container="hub-tab-devices">
+            <div class="section-block hidden" id="hubSavedDevicesSection" data-layout-id="hub_saved_devices" data-layout-label="Kayıtlı Bilgisayarlar">
               <div class="section-header-stack">
                 <div class="section-header-top">
                   <h2 class="section-title">Kayıtlı ve Aktif Bilgisayarlar</h2>
@@ -68,7 +68,7 @@
               <div class="saved-devices-list" id="hubSavedDevicesList"></div>
             </div>
 
-            <div class="section-block">
+            <div class="section-block" data-layout-id="hub_pair_form" data-layout-label="Bilgisayar Eşleştir">
               <form class="pair-form" id="hubPairForm">
                 <h2 class="section-title">Güvenlik Kodu ile Bilgisayar Eşleştir</h2>
                 <p class="section-subtitle">
@@ -95,8 +95,8 @@
 
           <!-- HUB TAB 2: UYGULAMA AYARLARI (KİŞİSELLEŞTİRME, BİLDİRİM PANELİ, GÜVENLİK) -->
           <div class="hub-tab-panel" id="hub-tab-settings">
-            <div class="section-block">
-              <div class="section-header-stack">
+            <div class="section-block" data-layout-container="hub-tab-settings">
+              <div class="section-header-stack" data-layout-id="set_header" data-layout-label="Ayarlar Başlığı">
                 <div class="section-header-top">
                   <h1 class="section-title-lg">Uygulama Ayarları</h1>
                 </div>
@@ -104,7 +104,7 @@
               </div>
 
               <!-- Ayarlar Bölüm 1: Bildirimler ve Medya -->
-              <div class="settings-group-card">
+              <div class="settings-group-card" data-layout-id="set_notif_media" data-layout-label="Bildirimler ve Medya">
                 <div class="settings-group-header">
                   <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path d="M10 2a6 6 0 0 0-6 6v3.586l-.707.707A1 1 0 0 0 4 14h12a1 1 0 0 0 .707-1.707L16 11.586V8a6 6 0 0 0-6-6zM10 18a2 2 0 0 0 2-2H8a2 2 0 0 0 2 2z"/>
@@ -136,7 +136,7 @@
               </div>
 
               <!-- Ayarlar Bölüm 2: Uzaktan Masaüstü -->
-              <div class="settings-group-card">
+              <div class="settings-group-card" data-layout-id="set_remote_prefs" data-layout-label="Uzaktan Masaüstü Tercihleri">
                 <div class="settings-group-header">
                   <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path d="M4 7V4h3M16 7V4h-3M4 13v3h3M16 13v3h-3" stroke-linecap="round" stroke-linejoin="round" />
@@ -170,7 +170,7 @@
               </div>
 
               <!-- Ayarlar Bölüm 3: Sistem & Haptik -->
-              <div class="settings-group-card">
+              <div class="settings-group-card" data-layout-id="set_haptic_conn" data-layout-label="Haptik & Bağlantı Motoru">
                 <div class="settings-group-header">
                   <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path d="M12 2a4 4 0 0 0-4 4v1.5a1 1 0 0 1-1 1H5.5A3.5 3.5 0 0 0 2 12a3.5 3.5 0 0 0 3.5 3.5H7a1 1 0 0 1 1 1V18a4 4 0 0 0 4 4 4 4 0 0 0 4-4v-1.5a1 1 0 0 1 1-1h1.5A3.5 3.5 0 0 0 21 12a3.5 3.5 0 0 0-3.5-3.5H16a1 1 0 0 1-1-1V6a4 4 0 0 0-4-4z"/>
@@ -202,7 +202,7 @@
               </div>
 
               <!-- Ayarlar Bölüm 4: Güvenlik & Denetim -->
-              <div class="settings-group-card">
+              <div class="settings-group-card" data-layout-id="set_security" data-layout-label="Güvenlik ve Denetim">
                 <div class="settings-group-header">
                   <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path d="M10 2L3 5v6c0 5 3.5 8.5 7 9 3.5-.5 7-4 7-9V5l-7-3z"/>
@@ -220,7 +220,7 @@
               </div>
 
               <!-- Ayarlar Bölüm 5: Yazılım Güncelleme (GitHub) -->
-              <div class="settings-group-card" id="settingsUpdateCard">
+              <div class="settings-group-card" id="settingsUpdateCard" data-layout-id="set_software_update" data-layout-label="Yazılım Güncelleme">
                 <div class="settings-group-header">
                   <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path d="M10 3v9m0 0l-3.5-3.5M10 12l3.5-3.5M4 15.5h12" stroke-linecap="round" stroke-linejoin="round"/>
@@ -230,7 +230,7 @@
 
                 <div class="setting-action-row">
                   <div class="setting-meta">
-                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.1</span>
+                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.2</span>
                     <span class="setting-desc" id="updateStatusCaption">GitHub (blttaha/bridge) üzerinden mobil ve masaüstü sürümlerini denetleyin</span>
                   </div>
                   <button type="button" class="btn-compact btn-secondary" id="btnCheckUpdatesSetting">Denetle</button>
@@ -301,8 +301,8 @@
       <div class="connected-workspace hidden" id="view-connected-workspace">
         <div class="workspace-tabs-track" id="workspaceTabsTrack">
         <!-- TAB 1: SAHNELER & HIZLI EYLEMLER -->
-        <section class="tab-panel active" id="tab-scenes">
-          <div class="section-block">
+        <section class="tab-panel active" id="tab-scenes" data-layout-container="tab-scenes">
+          <div class="section-block" data-layout-id="scenes_intervene" data-layout-label="Anlık Müdahale">
             <div class="section-header-row">
               <h2 class="section-title">Anlık Müdahale</h2>
               <div class="header-action-group">
@@ -350,7 +350,7 @@
           </div>
 
           <!-- QUICK LAUNCH BUTTONS (1 OR MULTIPLE FILES / APPS / FOLDERS WITH FULL PROPERTIES & OPEN-WITH) -->
-          <div class="section-block">
+          <div class="section-block" data-layout-id="scenes_quick_actions" data-layout-label="Hızlı Erişim Butonları">
             <div class="section-header-stack">
               <div class="section-header-top">
                 <h1 class="section-title-lg">Hızlı Erişim Butonları</h1>
@@ -379,8 +379,8 @@
         </section>
 
         <!-- TAB 2: SAHNELER VE MAKROLAR -->
-        <section class="tab-panel" id="tab-macros">
-          <div class="section-block">
+        <section class="tab-panel" id="tab-macros" data-layout-container="tab-macros">
+          <div class="section-block" data-layout-id="macros_scenes" data-layout-label="Çalışma Sahneleri">
             <div class="section-header-stack">
               <div class="section-header-top">
                 <h1 class="section-title-lg">Çalışma Sahneleri</h1>
@@ -414,7 +414,7 @@
             <div class="scenes-grid hidden" id="scenesListContainer"></div>
           </div>
 
-          <div class="section-block">
+          <div class="section-block" data-layout-id="macros_list" data-layout-label="Makrolar ve Tuş Atamaları">
             <div class="section-header-stack">
               <div class="section-header-top">
                 <h2 class="section-title">Makrolar ve Tuş Atamaları</h2>
@@ -444,8 +444,8 @@
 
         <!-- TAB 3: UYGULAMALAR (TÜM TESPİT EDİLEN VE ELLE EKLENEN UYGULAMALAR) -->
         <section class="tab-panel" id="tab-apps">
-          <div class="section-block">
-            <div class="section-header-stack">
+          <div class="section-block" data-layout-container="tab-apps">
+            <div class="section-header-stack" data-layout-id="apps_header" data-layout-label="Uygulamalar Başlığı">
               <div class="section-header-top">
                 <h1 class="section-title-lg">Uygulamalar</h1>
                 <div class="header-btn-group">
@@ -461,7 +461,7 @@
               </p>
             </div>
 
-            <div class="apps-toolbar-stack">
+            <div class="apps-toolbar-stack" data-layout-id="apps_search" data-layout-label="Uygulama Arama Çubuğu">
               <div class="apps-search-box">
                 <svg class="apps-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                   <circle cx="9" cy="9" r="5.5" />
@@ -477,13 +477,13 @@
               </div>
             </div>
 
-            <div class="apps-catalog-grid" id="appsCatalogGrid"></div>
+            <div class="apps-catalog-grid" id="appsCatalogGrid" data-layout-id="apps_catalog" data-layout-label="Uygulama Listesi"></div>
           </div>
         </section>
 
         <!-- TAB 4: KONTROL (EKRANSIZ MOUSE/TOUCHPAD, CANLI MASAÜSTÜ, EKRANLAR & PENCERELER) -->
-        <section class="tab-panel" id="tab-remote">
-          <div class="remote-workstation is-screen-off" id="remoteWorkstation">
+        <section class="tab-panel" id="tab-remote" data-layout-container="tab-remote">
+          <div class="remote-workstation is-screen-off" id="remoteWorkstation" data-layout-id="remote_workstation" data-layout-label="Touchpad ve Canlı Ekran">
             <!-- Top Remote Bar: Monitor Switcher + Stream Toggle + Mouse/Touch Mode + Fullscreen & Keyboard -->
             <div class="remote-header-bar">
               <div class="remote-touchpad-header-title" id="remoteTouchpadHeaderTitle">
@@ -655,7 +655,7 @@
           </div>
 
           <!-- EKRANLAR & CANLI PENCERELER (MERGED INTO KONTROL TAB BELOW REMOTE WORKSTATION) -->
-          <div class="section-block control-monitors-section">
+          <div class="section-block control-monitors-section" data-layout-id="remote_monitors" data-layout-label="Monitör Topolojisi">
             <div class="section-header-stack">
               <div class="section-header-top">
                 <h2 class="section-title">Monitör Topolojisi</h2>
@@ -691,7 +691,7 @@
             </div>
           </div>
 
-          <div class="section-block">
+          <div class="section-block" data-layout-id="remote_windows" data-layout-label="Açık Pencereler">
             <div class="section-header-row">
               <div>
                 <h2 class="section-title">Açık Pencereler</h2>
@@ -708,8 +708,8 @@
         </section>
 
         <!-- TAB 5: SİSTEM, SES MİKSERİ, ZAMANLAYICI & GÜÇ -->
-        <section class="tab-panel" id="tab-system">
-          <div class="section-block">
+        <section class="tab-panel" id="tab-system" data-layout-container="tab-system">
+          <div class="section-block" data-layout-id="sys_audio" data-layout-label="Ses ve Medya Mikseri">
             <div class="section-header-row">
               <div>
                 <h1 class="section-title-lg">Ses ve Medya Mikseri</h1>
@@ -800,7 +800,7 @@
           </div>
 
           <!-- PER-MONITOR SCREEN BRIGHTNESS -->
-          <div class="section-block">
+          <div class="section-block" data-layout-id="sys_brightness" data-layout-label="Ekran Parlaklığı">
             <div class="section-header-row">
               <div>
                 <h2 class="section-title">Ekran Parlaklığı</h2>
@@ -827,7 +827,7 @@
           </div>
 
           <!-- TIMED SLEEP / SHUTDOWN SCHEDULER -->
-          <div class="section-block">
+          <div class="section-block" data-layout-id="sys_timer" data-layout-label="Zamanlı Güç Sayacı">
             <div class="section-header-row">
               <div>
                 <h2 class="section-title">Zamanlı Güç Sayacı</h2>
@@ -872,7 +872,7 @@
             </div>
           </div>
 
-          <div class="section-block">
+          <div class="section-block" data-layout-id="sys_wireless" data-layout-label="Kablosuz Bağlantılar">
             <div class="section-header-row">
               <div>
                 <h2 class="section-title">Kablosuz Bağlantılar</h2>
@@ -954,7 +954,7 @@
             </div>
           </div>
 
-          <div class="section-block">
+          <div class="section-block" data-layout-id="sys_file_bridge" data-layout-label="Kablosuz Dosya Köprüsü">
             <div class="section-header-row">
               <div>
                 <h2 class="section-title">Kablosuz Dosya Köprüsü</h2>
@@ -998,7 +998,7 @@
             </div>
           </div>
 
-          <div class="section-block">
+          <div class="section-block" data-layout-id="sys_clipboard" data-layout-label="Pano Köprüsü">
             <div class="section-header-row">
               <div>
                 <h2 class="section-title">Pano Köprüsü</h2>
@@ -1016,7 +1016,7 @@
             </div>
           </div>
 
-          <div class="section-block">
+          <div class="section-block" data-layout-id="sys_power" data-layout-label="Güç ve Oturum Yönetimi">
             <h2 class="section-title">Güç ve Oturum Yönetimi</h2>
             <div class="power-grid">
               <button type="button" class="power-card" data-power="lock" id="powerLockBtn">
@@ -1073,6 +1073,18 @@
         </div>
       </div>
     </main>
+
+    <!-- FLOATING PAGE LAYOUT EDIT BANNER (Shown when long-pressing page sections to reorder) -->
+    <div class="layout-edit-banner hidden" id="layoutEditBanner">
+      <div class="layout-edit-info">
+        <span class="layout-edit-dot"></span>
+        <span class="layout-edit-title">Sayfa Düzeni · Sürükleyip Taşıyın</span>
+      </div>
+      <div class="layout-edit-actions">
+        <button type="button" class="btn-secondary btn-compact" id="resetPageLayoutBtn">Sıfırla</button>
+        <button type="button" class="btn-primary btn-compact" id="donePageLayoutBtn">Tamam</button>
+      </div>
+    </div>
 
     <!-- BOTTOM ARCHITECTURAL NAVIGATION (5 ICON-ONLY TABS: Hızlı Erişim, Sahneler ve Makrolar, Uygulamalar, Kontrol, Sistem) -->
     <nav class="bottom-nav hidden" id="bottomNav" aria-label="Cihaz İçi Menü">
@@ -1387,7 +1399,7 @@
         <div class="modal-header">
           <div>
             <h2 class="modal-title" id="qaModalTitle">Hızlı Erişim Butonu Oluştur</h2>
-            <p class="modal-subtitle">Bir veya birden fazla dosya, klasör, URL veya uygulama atayın</p>
+            <p class="modal-subtitle">Uygulama, makro, sahne, dosya veya sistem işlevlerini tek butona atayın</p>
           </div>
           <button type="button" class="icon-btn" id="closeQaModalBtn" aria-label="Kapat">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -1403,23 +1415,26 @@
               type="text"
               id="qaNameInput"
               class="input-field"
-              placeholder="Örn: Çalışma Dosyalarım"
+              placeholder="Örn: Yayın Başlat, Gece Modu, Çalışma..."
             />
           </div>
 
-          <!-- CLEAN ADD ITEM BUILDER CARD -->
+          <!-- CLEAN ADD ITEM BUILDER CARD WITH SINGLE SELECT MENU -->
           <div class="rule-builder-card">
-            <div class="rule-builder-header">
-              <span class="sub-panel-title" id="qaItemBuilderHeading">Hedef Seçin</span>
-              <div class="source-tabs" id="qaSourceTabs">
-                <button type="button" class="source-tab active" data-qa-source="file">Dosya Çalıştır</button>
-                <button type="button" class="source-tab" data-qa-source="app">Uygulama</button>
-                <button type="button" class="source-tab" data-qa-source="custom">Klasör / URL</button>
-              </div>
+            <div class="form-group">
+              <label class="form-label" for="qaActionTypeSelect" id="qaItemBuilderHeading">Hızlı Erişim Türü</label>
+              <select id="qaActionTypeSelect" class="input-field">
+                <option value="app">Kurulu Uygulama Başlat</option>
+                <option value="system_action">Sistem, Medya veya Bağlantı İşlemi</option>
+                <option value="macro">Kayıtlı Makro / Kısayol Çalıştır</option>
+                <option value="scene">Çalışma Sahnesi Başlat</option>
+                <option value="file">PC Dosyası veya Script Çalıştır (.exe, .bat, belge)</option>
+                <option value="custom">Klasör veya Web URL Aç</option>
+              </select>
             </div>
 
             <!-- Source 1: PC File / Executable / Script Picker & Launch Settings -->
-            <div id="qaSourceFileGroup" class="form-group">
+            <div id="qaSourceFileGroup" class="form-group hidden">
               <div class="qa-file-picker-bar">
                 <input
                   type="text"
@@ -1444,7 +1459,7 @@
             </div>
 
             <!-- Source 2: Installed PC App (Searchable Custom Picker) -->
-            <div id="qaSourceAppGroup" class="form-group hidden">
+            <div id="qaSourceAppGroup" class="form-group">
               <div class="custom-app-picker" id="qaCustomAppPicker">
                 <div class="app-picker-search-wrap">
                   <svg class="app-picker-search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -1471,9 +1486,70 @@
                   <input type="text" id="qaCustomItemNameInput" class="input-field" placeholder="Başlık" />
                 </div>
                 <div class="form-group">
-                  <input type="text" id="qaCustomItemPathInput" class="input-field" placeholder="https://... veya yol" />
+                  <input type="text" id="qaCustomItemPathInput" class="input-field" placeholder="https://... veya klasör yolu" />
                 </div>
               </div>
+            </div>
+
+            <!-- Source 4: Saved Macro -->
+            <div id="qaSourceMacroGroup" class="form-group hidden">
+              <label class="form-label" for="qaMacroSelect">Çalıştırılacak Makro</label>
+              <select id="qaMacroSelect" class="input-field"></select>
+            </div>
+
+            <!-- Source 5: Saved Workspace Scene -->
+            <div id="qaSourceSceneGroup" class="form-group hidden">
+              <label class="form-label" for="qaSceneSelect">Başlatılacak Çalışma Sahnesi</label>
+              <select id="qaSceneSelect" class="input-field"></select>
+            </div>
+
+            <!-- Source 6: Built-in System / Media / Wireless / Display Action -->
+            <div id="qaSourceSystemActionGroup" class="form-group hidden">
+              <label class="form-label" for="qaSystemActionSelect">Çalıştırılacak İşlev</label>
+              <select id="qaSystemActionSelect" class="input-field">
+                <optgroup label="Güç ve Kilit İşlemleri">
+                  <option value="sys:toggle_lock">PC Kilitle / Kilidi Aç</option>
+                  <option value="sys:sleep">Bilgisayarı Uyku Moduna Al</option>
+                  <option value="sys:restart">Bilgisayarı Yeniden Başlat</option>
+                  <option value="sys:shutdown">Bilgisayarı Kapat</option>
+                  <option value="sys:hibernate">Hazırda Beklet (Hibernate)</option>
+                  <option value="sys:signout">Windows Oturumunu Kapat</option>
+                </optgroup>
+                <optgroup label="Ekran ve Pencere Yönetimi">
+                  <option value="mon:off">Ekranları Kapat (Karart)</option>
+                  <option value="mon:on">Ekranları Aç (Uyandır)</option>
+                  <option value="win:show_desktop">Masaüstünü Göster / Gizle</option>
+                  <option value="win:minimize_all">Tüm Pencereleri Küçült</option>
+                  <option value="disp:extend">Çoklu Ekran: Uzat (Çift Ekran)</option>
+                  <option value="disp:clone">Çoklu Ekran: Yinele</option>
+                  <option value="disp:internal">Sadece 1. Ekran (PC Ekranı)</option>
+                  <option value="disp:external">Sadece 2. Ekran (Harici Ekran)</option>
+                </optgroup>
+                <optgroup label="Ses ve Medya Kontrolleri">
+                  <option value="media:play_pause">Medya Oynat / Duraklat</option>
+                  <option value="media:next">Sonraki Parça</option>
+                  <option value="media:prev">Önceki Parça</option>
+                  <option value="audio:toggle_mute">Ana Sesi Sustur / Aç</option>
+                  <option value="audio:toggle_mic">Mikrofonu Sustur / Aç</option>
+                  <option value="media:vol_up">Ses Seviyesini Artır</option>
+                  <option value="media:vol_down">Ses Seviyesini Azalt</option>
+                </optgroup>
+                <optgroup label="Kablosuz Bağlantılar">
+                  <option value="wireless:wifi_on">PC Wi-Fi Aç</option>
+                  <option value="wireless:wifi_off">PC Wi-Fi Kapat</option>
+                  <option value="wireless:hotspot_on">Mobil Erişim Noktası (Hotspot) Aç</option>
+                  <option value="wireless:hotspot_off">Mobil Erişim Noktası (Hotspot) Kapat</option>
+                  <option value="wireless:bt_on">Bluetooth Aç</option>
+                  <option value="wireless:bt_off">Bluetooth Kapat</option>
+                </optgroup>
+                <optgroup label="Sistem Bakım ve Araçlar">
+                  <option value="key:SCREENSHOT">Ekran Alıntısı Aracını Aç (Win+Shift+S)</option>
+                  <option value="key:TASKMGR">Görev Yöneticisini Aç (Ctrl+Shift+Esc)</option>
+                  <option value="maint:flush_dns">DNS Önbelleğini Temizle</option>
+                  <option value="maint:optimize_ram">RAM Belleği Optimize Et</option>
+                  <option value="maint:empty_recycle_bin">Geri Dönüşüm Kutusunu Boşalt</option>
+                </optgroup>
+              </select>
             </div>
 
             <!-- COLLAPSIBLE ITEM PROPERTIES ("ÖZELLİKLER") -->

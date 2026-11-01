@@ -324,6 +324,10 @@
 
   // Android Hardware Back Button hook
   window.__handleAndroidBack = function () {
+    if (document.body.classList.contains('layout-edit-mode')) {
+      exitPageLayoutEditMode();
+      return true;
+    }
     if (state.isFullscreen) {
       setRemoteFullscreen(false);
       return true;
@@ -2187,6 +2191,9 @@
     if (t === 'folder') return 'KLASÖR';
     if (t === 'app') return 'UYGULAMA';
     if (t === 'url') return 'WEB URL';
+    if (t === 'macro') return 'MAKRO';
+    if (t === 'scene') return 'SAHNE';
+    if (t === 'system_action') return 'SİSTEM İŞLEVİ';
     return 'DOSYA';
   }
 
@@ -2197,6 +2204,31 @@
       const iconUrl = first.icon || findIconForItem(first);
       if (iconUrl && iconUrl.startsWith('data:image/')) {
         return `<img class="app-real-icon" src="${safeImageSrc(iconUrl)}" alt="${escapeHtml(qa.name || '')}" loading="lazy" />`;
+      }
+      if (first.targetType === 'macro') {
+        return `
+          <svg class="qa-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <rect x="3" y="4.5" width="18" height="15" rx="2.2" />
+            <path d="M7.5 9.5l3 2.5-3 2.5M12.5 14.5H16.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        `;
+      }
+      if (first.targetType === 'scene') {
+        return `
+          <svg class="qa-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+            <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+            <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+            <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+          </svg>
+        `;
+      }
+      if (first.targetType === 'system_action') {
+        return `
+          <svg class="qa-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <path d="M13 2.5L4.5 13.5h6.5l-1 8 8.5-11h-6.5l1-8z" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        `;
       }
       if (first.targetType === 'folder') {
         return `
@@ -2978,6 +3010,7 @@
         }
       } else if (remoteTabEl && wsEl.parentElement !== remoteTabEl) {
         remoteTabEl.insertBefore(wsEl, remoteTabEl.firstChild);
+        applySingleContainerSavedLayout(remoteTabEl);
       }
       wsEl.classList.toggle('is-fullscreen', state.isFullscreen);
     }
@@ -4890,6 +4923,60 @@
     return opts.join('');
   }
 
+  function syncQaActionTypeVisibility(sourceType) {
+    const src = sourceType || 'app';
+    state.qaItemSource = src;
+    const typeSel = document.getElementById('qaActionTypeSelect');
+    if (typeSel && typeSel.value !== src) typeSel.value = src;
+
+    const gFile = document.getElementById('qaSourceFileGroup');
+    const gApp = document.getElementById('qaSourceAppGroup');
+    const gCustom = document.getElementById('qaSourceCustomGroup');
+    const gMacro = document.getElementById('qaSourceMacroGroup');
+    const gScene = document.getElementById('qaSourceSceneGroup');
+    const gSys = document.getElementById('qaSourceSystemActionGroup');
+    const advDetails = document.getElementById('qaAdvancedDetails');
+
+    if (gFile) gFile.classList.toggle('hidden', src !== 'file');
+    if (gApp) gApp.classList.toggle('hidden', src !== 'app');
+    if (gCustom) gCustom.classList.toggle('hidden', src !== 'custom');
+    if (gMacro) gMacro.classList.toggle('hidden', src !== 'macro');
+    if (gScene) gScene.classList.toggle('hidden', src !== 'scene');
+    if (gSys) gSys.classList.toggle('hidden', src !== 'system_action');
+
+    const supportsWinProps = src === 'app' || src === 'file' || src === 'custom';
+    if (advDetails) {
+      advDetails.classList.toggle('hidden', !supportsWinProps);
+      if (!supportsWinProps) advDetails.open = false;
+    }
+  }
+
+  function populateQaDynamicSelects() {
+    const macSel = document.getElementById('qaMacroSelect');
+    if (macSel) {
+      const macs = Array.isArray(state.macros) ? state.macros : [];
+      if (!macs.length) {
+        macSel.innerHTML = `<option value="">Henüz kayıtlı makro yok (Sahneler & Makrolar sekmesinden ekleyin)</option>`;
+      } else {
+        macSel.innerHTML = macs
+          .map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)} (${(m.steps || []).length} adım)</option>`)
+          .join('');
+      }
+    }
+
+    const scSel = document.getElementById('qaSceneSelect');
+    if (scSel) {
+      const scs = Array.isArray(state.scenes) ? state.scenes : [];
+      if (!scs.length) {
+        scSel.innerHTML = `<option value="">Henüz kayıtlı sahne yok (Sahneler & Makrolar sekmesinden ekleyin)</option>`;
+      } else {
+        scSel.innerHTML = scs
+          .map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${(s.items || []).length} uygulama)</option>`)
+          .join('');
+      }
+    }
+  }
+
   function openQuickActionComposer(existingQa, prefillItem) {
     state.editingQaId = existingQa ? existingQa.id : null;
     state.qaExecMode = existingQa && existingQa.executionMode === 'sequential' ? 'sequential' : 'parallel';
@@ -4921,6 +5008,8 @@
     document.querySelectorAll('#qaExecModeRow .segment-btn').forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-qa-exec') === state.qaExecMode);
     });
+
+    populateQaDynamicSelects();
 
     // Populate Searchable Custom App Picker
     const appSel = document.getElementById('qaInstalledAppSelect');
@@ -4961,6 +5050,14 @@
     const advDetails = document.getElementById('qaAdvancedDetails');
     if (advDetails) advDetails.open = false;
 
+    const initialType =
+      existingQa && existingQa.items && existingQa.items[0] && existingQa.items[0].targetType
+        ? existingQa.items[0].targetType === 'folder' || existingQa.items[0].targetType === 'url'
+          ? 'custom'
+          : existingQa.items[0].targetType
+        : 'app';
+    syncQaActionTypeVisibility(initialType);
+
     renderQaComposerItemsList();
     openModal('quickActionComposerModal');
   }
@@ -4972,30 +5069,46 @@
     if (!listEl) return;
 
     if (!state.qaItems.length) {
-      listEl.innerHTML = `<p class="section-subtitle">Henüz bu butona dosya veya uygulama eklenmedi. Yukarıdan dosya, uygulama veya URL seçip ekleyin.</p>`;
+      listEl.innerHTML = `<p class="section-subtitle">Henüz öğe eklenmedi. Yukarıdaki menüden hızlı erişim türünü seçip ekleyin.</p>`;
       return;
     }
 
     listEl.innerHTML = state.qaItems
       .map((it, idx) => {
-        const monTxt =
-          typeof it.monitorIndex === 'number' && it.monitorIndex >= 0
-            ? `Ekran ${it.monitorIndex + 1}`
-            : 'Varsayılan Ekran';
-        const zoneTxt = it.zone && it.zone !== 'none' ? ` · ${formatZoneShort(it.zone)}` : '';
+        const tType = String(it.targetType || 'file');
+        let subTxt = '';
+        if (tType === 'macro') {
+          subTxt = 'Klavye Makrosu';
+        } else if (tType === 'scene') {
+          subTxt = 'Çalışma Sahnesi';
+        } else if (tType === 'system_action') {
+          subTxt = 'Sistem İşlemi';
+        } else {
+          const monTxt =
+            typeof it.monitorIndex === 'number' && it.monitorIndex >= 0
+              ? `Ekran ${it.monitorIndex + 1}`
+              : 'Varsayılan Ekran';
+          const zoneTxt = it.zone && it.zone !== 'none' ? ` · ${formatZoneShort(it.zone)}` : '';
+          subTxt = monTxt + zoneTxt;
+        }
+        const canInspectSub = tType !== 'macro' && tType !== 'scene' && tType !== 'system_action';
         return `
           <div class="editor-item-row">
             <div style="min-width:0;flex:1;">
               <div class="window-row-proc">${escapeHtml(it.name || it.targetPath)}</div>
-              <div class="mono-stat">${escapeHtml(monTxt + zoneTxt)}</div>
+              <div class="mono-stat">${escapeHtml(subTxt)}</div>
             </div>
             <div class="qa-card-actions">
-              <button type="button" class="icon-action-btn" data-qa-edit-subitem="${idx}" title="Özellikler" aria-label="Özellikler">
+              ${
+                canInspectSub
+                  ? `<button type="button" class="icon-action-btn" data-qa-edit-subitem="${idx}" title="Özellikler" aria-label="Özellikler">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                   <circle cx="10" cy="10" r="2.5" />
                   <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
                 </svg>
-              </button>
+              </button>`
+                  : ''
+              }
               <button type="button" class="icon-action-btn danger" data-qa-remove-subitem="${idx}" title="Kaldır" aria-label="Kaldır">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                   <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
@@ -5860,11 +5973,19 @@
     let twoFingerLastY = 0;
     let twoFingerLastX = 0;
     let twoFingerMoved = false;
+    let singleTapTimer = null;
 
     function clearHoldTimer() {
       if (holdTimer) {
         clearTimeout(holdTimer);
         holdTimer = null;
+      }
+    }
+
+    function clearSingleTapTimer() {
+      if (singleTapTimer) {
+        clearTimeout(singleTapTimer);
+        singleTapTimer = null;
       }
     }
 
@@ -5919,6 +6040,7 @@
 
         if (touchCount === 2) {
           // Second finger = zoom/pan the phone view: the first finger must not keep pressing on the PC
+          clearSingleTapTimer();
           if (effectiveMode === 'direct') endTouchContact('cancel');
           if (trackpadDragHoldActive) {
             trackpadDragHoldActive = false;
@@ -5958,15 +6080,17 @@
           trackpadDragHoldActive = false;
 
           if (effectiveMode === 'trackpad') {
-            isSecondTapTouch = touchStartTs - lastTapTs < 340;
+            isSecondTapTouch = touchStartTs - lastTapTs < 320;
             if (isSecondTapTouch) {
+              // Cancel Tap #1's deferred single click so Windows sees a clean left-button hold for dragging!
+              clearSingleTapTimer();
               // Double-tap & hold on Touchpad = Left Click Hold (drag) until finger is released!
               holdTimer = setTimeout(() => {
                 if (touchCount === 1 && !trackpadDragHoldActive) {
                   trackpadDragHoldActive = true;
                   setLeftButtonHold(true);
                 }
-              }, 135);
+              }, 40);
             } else {
               // Long-press on first touch (holding finger still for 380ms) triggers Right Click
               holdTimer = setTimeout(() => {
@@ -6066,8 +6190,9 @@
           lastY = t.clientY;
           totalMovedPx += Math.hypot(dx, dy);
 
-          if (effectiveMode === 'trackpad' && isSecondTapTouch && !trackpadDragHoldActive && totalMovedPx > 4) {
+          if (effectiveMode === 'trackpad' && isSecondTapTouch && !trackpadDragHoldActive && totalMovedPx >= 1) {
             clearHoldTimer();
+            clearSingleTapTimer();
             trackpadDragHoldActive = true;
             setLeftButtonHold(true);
           } else if (totalMovedPx > 10) {
@@ -6075,7 +6200,7 @@
           }
 
           if (effectiveMode === 'trackpad') {
-            // Sub-pixel relative hardware mouse movement for zero-stutter 60+ FPS cursor control
+            // Sub-pixel relative hardware mouse movement with 1:1 isotropic X/Y speed in all modes & orientations
             const boxW = Math.max(240, (state.isStreaming && screenImg.clientWidth) || viewport.clientWidth || 340);
             const boxH = Math.max(150, (state.isStreaming && screenImg.clientHeight) || viewport.clientHeight || 220);
             const pcW = (state.streamBounds && state.streamBounds.width) || 1920;
@@ -6085,11 +6210,16 @@
             const accel = velocity > 14 ? 1.42 : velocity > 6 ? 1.18 : 1.0;
             const sens = (state.cursorSensitivity * accel) / Math.max(1, state.zoomScale * 0.75);
 
-            relAccX += (dx * sens * pcW) / boxW;
-            relAccY += (dy * sens * pcH) / boxH;
+            // Use a uniform isotropic scale factor so horizontal and vertical speeds are strictly identical (including Fullscreen Touchpad)
+            const refBoxSpan = Math.max(240, Math.min(boxW, boxH));
+            const refPcSpan = Math.max(1080, Math.min(pcW, pcH));
+            const isoScale = (refPcSpan / refBoxSpan) * 1.15;
 
-            state.cursorNormX = Math.max(0, Math.min(1, state.cursorNormX + (dx * sens) / boxW));
-            state.cursorNormY = Math.max(0, Math.min(1, state.cursorNormY + (dy * sens) / boxH));
+            relAccX += dx * sens * isoScale;
+            relAccY += dy * sens * isoScale;
+
+            state.cursorNormX = Math.max(0, Math.min(1, state.cursorNormX + (dx * sens * isoScale) / Math.max(1, pcW)));
+            state.cursorNormY = Math.max(0, Math.min(1, state.cursorNormY + (dy * sens * isoScale) / Math.max(1, pcH)));
             noteLocalCursorMove();
 
             if (state.isStreaming && state.zoomScale > 1.02) {
@@ -6190,10 +6320,19 @@
         if (touchCount === 1 && padTouches.length === 0) {
           // Release double-tap-and-hold drag when finger lifts off touchpad
           if (trackpadDragHoldActive) {
+            const holdElapsed = performance.now() - touchStartTs;
             trackpadDragHoldActive = false;
             isSecondTapTouch = false;
             lastTapTs = 0;
             setLeftButtonHold(false);
+            // If user did a quick double-tap without dragging, fire double-click on release
+            if (totalMovedPx < 10 && holdElapsed < 175) {
+              sendFastInput({
+                type: 'mouse_click',
+                button: 'left',
+                double: true
+              });
+            }
             touchCount = 0;
             return;
           }
@@ -6217,17 +6356,32 @@
           const maxTapMove = effectiveMode === 'direct' ? 16 : 11;
           if (totalMovedPx < maxTapMove) {
             const now = performance.now();
-            const isDouble = now - lastTapTs < 340;
-            lastTapTs = isDouble ? 0 : now;
-
             triggerHaptic(10);
             if (effectiveMode === 'trackpad') {
-              sendFastInput({
-                type: 'mouse_click',
-                button: 'left',
-                double: isDouble
-              });
+              if (isSecondTapTouch) {
+                clearSingleTapTimer();
+                lastTapTs = 0;
+                isSecondTapTouch = false;
+                sendFastInput({
+                  type: 'mouse_click',
+                  button: 'left',
+                  double: true
+                });
+              } else {
+                lastTapTs = now;
+                clearSingleTapTimer();
+                singleTapTimer = setTimeout(() => {
+                  singleTapTimer = null;
+                  sendFastInput({
+                    type: 'mouse_click',
+                    button: 'left',
+                    double: false
+                  });
+                }, 190);
+              }
             } else {
+              const isDouble = now - lastTapTs < 320;
+              lastTapTs = isDouble ? 0 : now;
               showTouchRippleAtNormalized(state.cursorNormX, state.cursorNormY);
               sendFastInput({
                 type: 'mouse_click',
@@ -6249,6 +6403,7 @@
 
     viewport.addEventListener('touchcancel', () => {
       clearHoldTimer();
+      clearSingleTapTimer();
       if (trackpadDragHoldActive) {
         trackpadDragHoldActive = false;
         isSecondTapTouch = false;
@@ -6438,7 +6593,11 @@
           finishSwipe();
           return;
         }
-        if (document.body.classList.contains('modal-open') || state.isFullscreen) {
+        if (
+          document.body.classList.contains('modal-open') ||
+          document.body.classList.contains('layout-edit-mode') ||
+          state.isFullscreen
+        ) {
           finishSwipe();
           return;
         }
@@ -6581,7 +6740,10 @@
           finishSwipe();
           return;
         }
-        if (document.body.classList.contains('modal-open')) {
+        if (
+          document.body.classList.contains('modal-open') ||
+          document.body.classList.contains('layout-edit-mode')
+        ) {
           finishSwipe();
           return;
         }
@@ -6759,7 +6921,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.1';
+    let currentAppVer = '2.19.2';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -7830,17 +7992,14 @@
       });
     });
 
-    document.querySelectorAll('#qaSourceTabs .source-tab').forEach((tab) => {
-      tab.addEventListener('click', () => {
+    const qaActionTypeSelect = document.getElementById('qaActionTypeSelect');
+    if (qaActionTypeSelect) {
+      qaActionTypeSelect.addEventListener('change', () => {
         triggerHaptic(8);
-        document.querySelectorAll('#qaSourceTabs .source-tab').forEach((t) => t.classList.remove('active'));
-        tab.classList.add('active');
-        state.qaItemSource = tab.getAttribute('data-qa-source');
-        document.getElementById('qaSourceFileGroup').classList.toggle('hidden', state.qaItemSource !== 'file');
-        document.getElementById('qaSourceAppGroup').classList.toggle('hidden', state.qaItemSource !== 'app');
-        document.getElementById('qaSourceCustomGroup').classList.toggle('hidden', state.qaItemSource !== 'custom');
+        populateQaDynamicSelects();
+        syncQaActionTypeVisibility(qaActionTypeSelect.value);
       });
-    });
+    }
 
     document.getElementById('qaBrowsePcBtn').addEventListener('click', () => {
       triggerHaptic(10);
@@ -7851,6 +8010,9 @@
       let name = '';
       let targetPath = '';
       let targetType = 'file';
+      let macroId = '';
+      let sceneId = '';
+      let actionCode = '';
 
       let fileArgs = '';
       let fileAdmin = false;
@@ -7886,6 +8048,42 @@
         targetType = 'app';
         fileArgs = app.launchArgs || '';
         itemIcon = app.icon || '';
+      } else if (state.qaItemSource === 'macro') {
+        const macSel = document.getElementById('qaMacroSelect');
+        const macId = macSel ? macSel.value.trim() : '';
+        const mac = (state.macros || []).find((m) => m.id === macId);
+        if (!mac) {
+          if (!silentWhenEmpty) showToast('Lütfen çalıştırılacak bir makro seçin');
+          return false;
+        }
+        name = mac.name;
+        targetType = 'macro';
+        targetPath = mac.id;
+        macroId = mac.id;
+      } else if (state.qaItemSource === 'scene') {
+        const scSel = document.getElementById('qaSceneSelect');
+        const scId = scSel ? scSel.value.trim() : '';
+        const sc = (state.scenes || []).find((s) => s.id === scId);
+        if (!sc) {
+          if (!silentWhenEmpty) showToast('Lütfen başlatılacak bir çalışma sahnesi seçin');
+          return false;
+        }
+        name = sc.name;
+        targetType = 'scene';
+        targetPath = sc.id;
+        sceneId = sc.id;
+      } else if (state.qaItemSource === 'system_action') {
+        const sysSel = document.getElementById('qaSystemActionSelect');
+        const code = sysSel ? sysSel.value.trim() : '';
+        if (!code) {
+          if (!silentWhenEmpty) showToast('Lütfen çalıştırılacak bir sistem işlevi seçin');
+          return false;
+        }
+        const opt = sysSel.options[sysSel.selectedIndex];
+        name = opt ? opt.textContent.trim() : code;
+        targetType = 'system_action';
+        targetPath = code;
+        actionCode = code;
       } else {
         name = document.getElementById('qaCustomItemNameInput').value.trim();
         targetPath = document.getElementById('qaCustomItemPathInput').value.trim();
@@ -7906,6 +8104,9 @@
         name,
         targetType,
         targetPath,
+        macroId: macroId || undefined,
+        sceneId: sceneId || undefined,
+        actionCode: actionCode || undefined,
         icon: itemIcon,
         openWithMode: 'default',
         openWithPath: '',
@@ -9418,6 +9619,7 @@
     if (laptopTouchpadButtons) {
       let leftBtnHoldTimer = null;
       let leftBtnHeldByTouch = false;
+      let suppressNextLeftClickTs = 0;
 
       laptopTouchpadButtons.addEventListener(
         'touchstart',
@@ -9430,7 +9632,7 @@
           leftBtnHoldTimer = setTimeout(() => {
             leftBtnHeldByTouch = true;
             setLeftButtonHold(true);
-          }, 150);
+          }, 140);
         },
         { passive: true }
       );
@@ -9440,6 +9642,7 @@
         if (leftBtnHeldByTouch) {
           if (e && e.cancelable) e.preventDefault();
           leftBtnHeldByTouch = false;
+          suppressNextLeftClickTs = performance.now();
           setLeftButtonHold(false);
         }
       };
@@ -9452,6 +9655,9 @@
         if (!btn) return;
         e.stopPropagation();
         const mouseBtn = btn.getAttribute('data-mouse-btn') || 'left';
+        if (mouseBtn === 'left' && performance.now() - suppressNextLeftClickTs < 450) {
+          return;
+        }
         if (mouseBtn === 'left' && state.isLeftButtonHeld) {
           setLeftButtonHold(false);
           return;
@@ -9800,6 +10006,430 @@
         }
       });
     });
+
+    bindPageLayoutCustomizationEngine();
+  }
+
+  // UNIVERSAL PAGE LAYOUT CUSTOMIZATION & MAGNETIC DRAG-AND-DROP ENGINE
+  const PAGE_LAYOUT_STORAGE_KEY = 'TAHABLT_PAGE_LAYOUTS_V1';
+
+  function loadSavedPageLayoutsMap() {
+    try {
+      const raw = localStorage.getItem(PAGE_LAYOUT_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function savePageLayoutsMap(map) {
+    try {
+      localStorage.setItem(PAGE_LAYOUT_STORAGE_KEY, JSON.stringify(map || {}));
+    } catch {}
+  }
+
+  function ensureLayoutItemToolbars(containerEl) {
+    if (!containerEl) return;
+    const items = Array.from(containerEl.children).filter((el) => el.hasAttribute('data-layout-id'));
+    if (!containerEl.__defaultLayoutOrder) {
+      containerEl.__defaultLayoutOrder = items.map((el) => el.getAttribute('data-layout-id'));
+    }
+    items.forEach((itemEl) => {
+      if (itemEl.querySelector(':scope > .layout-item-toolbar')) return;
+      const label = itemEl.getAttribute('data-layout-label') || 'Bölüm';
+      const toolbar = document.createElement('div');
+      toolbar.className = 'layout-item-toolbar';
+      toolbar.innerHTML = `
+        <div class="layout-drag-handle">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/>
+            <circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/>
+            <circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/>
+          </svg>
+          <span>${escapeHtml(label)}</span>
+        </div>
+        <div class="layout-step-controls">
+          <button type="button" class="layout-step-btn" data-layout-step="up" aria-label="Yukarı Taşı">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
+          <button type="button" class="layout-step-btn" data-layout-step="down" aria-label="Aşağı Taşı">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+      `;
+      itemEl.insertBefore(toolbar, itemEl.firstChild);
+    });
+  }
+
+  function applySingleContainerSavedLayout(containerEl, orderList) {
+    if (!containerEl || !Array.isArray(orderList) || !orderList.length) return;
+    ensureLayoutItemToolbars(containerEl);
+    const itemMap = new Map();
+    Array.from(containerEl.children).forEach((el) => {
+      const id = el.getAttribute('data-layout-id');
+      if (id) itemMap.set(id, el);
+    });
+    orderList.forEach((id) => {
+      const el = itemMap.get(id);
+      if (el) {
+        containerEl.appendChild(el);
+        itemMap.delete(id);
+      }
+    });
+    // Append any remaining items that weren't in the saved list
+    itemMap.forEach((el) => containerEl.appendChild(el));
+  }
+
+  function applyAllSavedPageLayouts() {
+    const map = loadSavedPageLayoutsMap();
+    document.querySelectorAll('[data-layout-container]').forEach((containerEl) => {
+      ensureLayoutItemToolbars(containerEl);
+      const cid = containerEl.id;
+      if (cid && Array.isArray(map[cid]) && map[cid].length) {
+        applySingleContainerSavedLayout(containerEl, map[cid]);
+      }
+    });
+  }
+
+  function persistContainerLayoutOrder(containerEl) {
+    if (!containerEl || !containerEl.id) return;
+    const order = Array.from(containerEl.children)
+      .filter((el) => el.hasAttribute('data-layout-id'))
+      .map((el) => el.getAttribute('data-layout-id'));
+    const map = loadSavedPageLayoutsMap();
+    map[containerEl.id] = order;
+    savePageLayoutsMap(map);
+  }
+
+  function getActiveLayoutContainer() {
+    if (state.showingHubView) {
+      return document.getElementById(state.activeHubTab || 'hub-tab-devices');
+    }
+    return document.getElementById(state.activeTab || 'tab-scenes');
+  }
+
+  function enterPageLayoutEditMode() {
+    if (document.body.classList.contains('layout-edit-mode')) return;
+    if (state.isFullscreen) return;
+    document.querySelectorAll('[data-layout-container]').forEach((c) => ensureLayoutItemToolbars(c));
+    document.body.classList.add('layout-edit-mode');
+    const banner = document.getElementById('layoutEditBanner');
+    if (banner) banner.classList.remove('hidden');
+    triggerHaptic(28);
+  }
+
+  function exitPageLayoutEditMode() {
+    if (!document.body.classList.contains('layout-edit-mode')) return;
+    document.body.classList.remove('layout-edit-mode');
+    const banner = document.getElementById('layoutEditBanner');
+    if (banner) banner.classList.add('hidden');
+    document.querySelectorAll('.is-layout-dragging, .layout-magnet-slot').forEach((el) => {
+      el.classList.remove('is-layout-dragging', 'layout-magnet-slot');
+      el.style.transform = '';
+      el.style.zIndex = '';
+    });
+    triggerHaptic(12);
+  }
+
+  function resetCurrentPageLayout() {
+    const containerEl = getActiveLayoutContainer();
+    if (!containerEl) return;
+    ensureLayoutItemToolbars(containerEl);
+    const defaultOrder = containerEl.__defaultLayoutOrder;
+    if (Array.isArray(defaultOrder) && defaultOrder.length) {
+      applySingleContainerSavedLayout(containerEl, defaultOrder);
+    }
+    const map = loadSavedPageLayoutsMap();
+    delete map[containerEl.id];
+    savePageLayoutsMap(map);
+    triggerHaptic(20);
+    showToast('Sayfa düzeni varsayılan konumlara sıfırlandı');
+  }
+
+  function bindPageLayoutCustomizationEngine() {
+    applyAllSavedPageLayouts();
+
+    const resetBtn = document.getElementById('resetPageLayoutBtn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        resetCurrentPageLayout();
+      });
+    }
+
+    const doneBtn = document.getElementById('donePageLayoutBtn');
+    if (doneBtn) {
+      doneBtn.addEventListener('click', () => {
+        exitPageLayoutEditMode();
+      });
+    }
+
+    // Prevent accidental button activations inside cards while rearranging page layout
+    document.addEventListener(
+      'click',
+      (e) => {
+        if (!document.body.classList.contains('layout-edit-mode')) return;
+        if (
+          e.target.closest('#layoutEditBanner') ||
+          e.target.closest('[data-layout-step]') ||
+          e.target.closest('.bottom-nav')
+        ) {
+          return;
+        }
+        if (e.target.closest('[data-layout-container]')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      true
+    );
+
+    // Step Up / Down buttons inside layout item toolbar
+    document.addEventListener('click', (e) => {
+      if (!document.body.classList.contains('layout-edit-mode')) return;
+      const stepBtn = e.target.closest('[data-layout-step]');
+      if (!stepBtn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const dir = stepBtn.getAttribute('data-layout-step');
+      const itemEl = stepBtn.closest('[data-layout-id]');
+      const containerEl = itemEl && itemEl.parentElement;
+      if (!itemEl || !containerEl) return;
+
+      const siblings = Array.from(containerEl.children).filter(
+        (el) => el.hasAttribute('data-layout-id') && !el.classList.contains('hidden')
+      );
+      const idx = siblings.indexOf(itemEl);
+      if (idx === -1) return;
+
+      if (dir === 'up' && idx > 0) {
+        containerEl.insertBefore(itemEl, siblings[idx - 1]);
+        persistContainerLayoutOrder(containerEl);
+        triggerHaptic(12);
+        itemEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else if (dir === 'down' && idx < siblings.length - 1) {
+        containerEl.insertBefore(siblings[idx + 1], itemEl);
+        persistContainerLayoutOrder(containerEl);
+        triggerHaptic(12);
+        itemEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+
+    // Long-press anywhere on a page section (or drag in edit mode) for Magnetic Reordering
+    let longPressTimer = null;
+    let pressStartX = 0;
+    let pressStartY = 0;
+    let dragItemEl = null;
+    let dragContainerEl = null;
+    let dragAnchorY = 0;
+    let lastClientY = 0;
+    let autoScrollRaf = null;
+
+    const clearLongPress = () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    const stopAutoScroll = () => {
+      if (autoScrollRaf) {
+        cancelAnimationFrame(autoScrollRaf);
+        autoScrollRaf = null;
+      }
+    };
+
+    const beginMagneticDrag = (itemEl, clientY) => {
+      if (!itemEl || !itemEl.parentElement) return;
+      dragItemEl = itemEl;
+      dragContainerEl = itemEl.parentElement;
+      dragAnchorY = clientY;
+      lastClientY = clientY;
+      dragItemEl.classList.add('is-layout-dragging');
+      dragItemEl.style.zIndex = '40';
+      triggerHaptic(18);
+
+      const scrollStep = () => {
+        if (!dragItemEl || !dragContainerEl) return;
+        const rect = dragContainerEl.getBoundingClientRect();
+        const edgeZone = 78;
+        let scrollDelta = 0;
+        if (lastClientY < rect.top + edgeZone) {
+          scrollDelta = -Math.max(4, Math.round(((rect.top + edgeZone - lastClientY) / edgeZone) * 14));
+        } else if (lastClientY > rect.bottom - edgeZone) {
+          scrollDelta = Math.max(4, Math.round(((lastClientY - (rect.bottom - edgeZone)) / edgeZone) * 14));
+        }
+        if (scrollDelta !== 0) {
+          const prevScroll = dragContainerEl.scrollTop;
+          dragContainerEl.scrollTop += scrollDelta;
+          const actualScroll = dragContainerEl.scrollTop - prevScroll;
+          if (actualScroll !== 0) {
+            dragAnchorY -= actualScroll;
+            updateMagneticDragPosition(lastClientY);
+          }
+        }
+        autoScrollRaf = requestAnimationFrame(scrollStep);
+      };
+      stopAutoScroll();
+      autoScrollRaf = requestAnimationFrame(scrollStep);
+    };
+
+    const updateMagneticDragPosition = (clientY) => {
+      if (!dragItemEl || !dragContainerEl) return;
+      lastClientY = clientY;
+      let dy = clientY - dragAnchorY;
+      dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
+
+      const draggedRect = dragItemEl.getBoundingClientRect();
+      const draggedCenterY = draggedRect.top + draggedRect.height / 2;
+
+      const siblings = Array.from(dragContainerEl.children).filter(
+        (el) => el.hasAttribute('data-layout-id') && !el.classList.contains('hidden')
+      );
+      const curIdx = siblings.indexOf(dragItemEl);
+      if (curIdx === -1) return;
+
+      // Check previous sibling for magnetic upward swap
+      if (curIdx > 0) {
+        const prevEl = siblings[curIdx - 1];
+        const prevRect = prevEl.getBoundingClientRect();
+        const prevThreshold = prevRect.top + prevRect.height * 0.52;
+        if (draggedCenterY < prevThreshold) {
+          const beforeTop = dragItemEl.getBoundingClientRect().top - dy;
+          dragContainerEl.insertBefore(dragItemEl, prevEl);
+          const afterTop = dragItemEl.getBoundingClientRect().top - dy;
+          dragAnchorY += afterTop - beforeTop;
+          dy = clientY - dragAnchorY;
+          dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
+          persistContainerLayoutOrder(dragContainerEl);
+          triggerHaptic(10);
+          return;
+        }
+      }
+
+      // Check next sibling for magnetic downward swap
+      if (curIdx < siblings.length - 1) {
+        const nextEl = siblings[curIdx + 1];
+        const nextRect = nextEl.getBoundingClientRect();
+        const nextThreshold = nextRect.top + nextRect.height * 0.48;
+        if (draggedCenterY > nextThreshold) {
+          const beforeTop = dragItemEl.getBoundingClientRect().top - dy;
+          dragContainerEl.insertBefore(nextEl, dragItemEl);
+          const afterTop = dragItemEl.getBoundingClientRect().top - dy;
+          dragAnchorY += afterTop - beforeTop;
+          dy = clientY - dragAnchorY;
+          dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
+          persistContainerLayoutOrder(dragContainerEl);
+          triggerHaptic(10);
+        }
+      }
+    };
+
+    const endMagneticDrag = () => {
+      clearLongPress();
+      stopAutoScroll();
+      if (!dragItemEl) return;
+      const finishedEl = dragItemEl;
+      const finishedContainer = dragContainerEl;
+      dragItemEl = null;
+      dragContainerEl = null;
+      finishedEl.classList.remove('is-layout-dragging');
+      finishedEl.classList.add('layout-magnet-slot');
+      finishedEl.style.transform = '';
+      finishedEl.style.zIndex = '';
+      setTimeout(() => {
+        finishedEl.classList.remove('layout-magnet-slot');
+      }, 260);
+      if (finishedContainer) {
+        persistContainerLayoutOrder(finishedContainer);
+      }
+      triggerHaptic(14);
+    };
+
+    document.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.touches.length !== 1) {
+          clearLongPress();
+          endMagneticDrag();
+          return;
+        }
+        if (document.body.classList.contains('modal-open') || state.isFullscreen) return;
+        const target = e.target;
+        if (!target || target.closest('#layoutEditBanner') || target.closest('[data-layout-step]')) return;
+
+        const itemEl = target.closest('[data-layout-id]');
+        const containerEl = target.closest('[data-layout-container]');
+        if (!containerEl) return;
+
+        const t = e.touches[0];
+        pressStartX = t.clientX;
+        pressStartY = t.clientY;
+
+        // If already in layout edit mode, touching the drag handle (or holding briefly on any card) starts magnetic drag
+        if (document.body.classList.contains('layout-edit-mode')) {
+          if (!itemEl) return;
+          if (target.closest('.layout-drag-handle')) {
+            e.preventDefault();
+            beginMagneticDrag(itemEl, t.clientY);
+          } else {
+            clearLongPress();
+            longPressTimer = setTimeout(() => {
+              beginMagneticDrag(itemEl, lastClientY || t.clientY);
+            }, 140);
+          }
+          lastClientY = t.clientY;
+          return;
+        }
+
+        // When NOT in layout edit mode: ignore interactive inputs, sliders, touchpad surface, or buttons that have their own hold actions
+        if (
+          target.closest('#remoteViewportBox') ||
+          target.closest('#laptopTouchpadButtons') ||
+          target.closest('input, textarea, select, [data-hotkey], [data-key]') ||
+          target.closest('.quick-action-tile')
+        ) {
+          return;
+        }
+
+        clearLongPress();
+        lastClientY = t.clientY;
+        longPressTimer = setTimeout(() => {
+          enterPageLayoutEditMode();
+          if (itemEl) {
+            beginMagneticDrag(itemEl, lastClientY || t.clientY);
+          }
+        }, 520);
+      },
+      { passive: false }
+    );
+
+    document.addEventListener(
+      'touchmove',
+      (e) => {
+        if (e.touches.length !== 1) {
+          clearLongPress();
+          return;
+        }
+        const t = e.touches[0];
+        lastClientY = t.clientY;
+        if (dragItemEl) {
+          if (e.cancelable) e.preventDefault();
+          updateMagneticDragPosition(t.clientY);
+          return;
+        }
+        if (longPressTimer) {
+          const moved = Math.hypot(t.clientX - pressStartX, t.clientY - pressStartY);
+          if (moved > 10) {
+            clearLongPress();
+          }
+        }
+      },
+      { passive: false }
+    );
+
+    document.addEventListener('touchend', endMagneticDrag, { passive: true });
+    document.addEventListener('touchcancel', endMagneticDrag, { passive: true });
   }
 
   // INITIALIZE APP

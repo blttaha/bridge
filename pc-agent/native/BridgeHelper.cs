@@ -4214,6 +4214,19 @@ namespace TahaBLT
             return result;
         }
 
+        private static void MoveCursorHardware(int targetX, int targetY)
+        {
+            SetCursorPos(targetX, targetY);
+            Rectangle vs = SystemInformation.VirtualScreen;
+            int vx = vs.X;
+            int vy = vs.Y;
+            int vw = Math.Max(1, vs.Width);
+            int vh = Math.Max(1, vs.Height);
+            int absX = (int)Math.Round(((double)(targetX - vx) * 65535.0) / Math.Max(1, vw - 1));
+            int absY = (int)Math.Round(((double)(targetY - vy) * 65535.0) / Math.Max(1, vh - 1));
+            mouse_event(MOUSEEVENTF_MOVE | 0x8000 | 0x4000, absX, absY, 0, IntPtr.Zero);
+        }
+
         private static object ApplyInputCommand(Dictionary<string, object> args)
         {
             string type = args.ContainsKey("type") ? Convert.ToString(args["type"]) : "";
@@ -4232,8 +4245,7 @@ namespace TahaBLT
                 Point p = Cursor.Position;
                 int nextX = Math.Max(mon.x, Math.Min(mon.x + mon.width - 1, p.X + dx));
                 int nextY = Math.Max(mon.y, Math.Min(mon.y + mon.height - 1, p.Y + dy));
-                SetCursorPos(nextX, nextY);
-                mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, IntPtr.Zero);
+                MoveCursorHardware(nextX, nextY);
                 double nx = Math.Max(0.0, Math.Min(1.0, (double)(nextX - mon.x) / Math.Max(1, mon.width)));
                 double ny = Math.Max(0.0, Math.Min(1.0, (double)(nextY - mon.y) / Math.Max(1, mon.height)));
                 return new { ok = true, normX = Math.Round(nx, 4), normY = Math.Round(ny, 4) };
@@ -4244,8 +4256,7 @@ namespace TahaBLT
                 double ny = args.ContainsKey("y") ? Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["y"]))) : 0.5;
                 int targetX = mon.x + (int)Math.Round(nx * mon.width);
                 int targetY = mon.y + (int)Math.Round(ny * mon.height);
-                SetCursorPos(targetX, targetY);
-                mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, IntPtr.Zero);
+                MoveCursorHardware(targetX, targetY);
                 return new { ok = true, normX = Math.Round(nx, 4), normY = Math.Round(ny, 4) };
             }
             else if (type == "mouse_down")
@@ -4254,8 +4265,7 @@ namespace TahaBLT
                 {
                     double nx = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"])));
                     double ny = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["y"])));
-                    SetCursorPos(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny));
-                    mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, IntPtr.Zero);
+                    MoveCursorHardware(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny));
                 }
                 string btn = args.ContainsKey("button") ? Convert.ToString(args["button"]) : "left";
                 if (btn == "right") mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, IntPtr.Zero);
@@ -4269,8 +4279,7 @@ namespace TahaBLT
                 {
                     double nx = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"])));
                     double ny = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["y"])));
-                    SetCursorPos(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny));
-                    mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, IntPtr.Zero);
+                    MoveCursorHardware(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny));
                 }
                 string btn = args.ContainsKey("button") ? Convert.ToString(args["button"]) : "left";
                 if (btn == "right") mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, IntPtr.Zero);
@@ -4284,8 +4293,7 @@ namespace TahaBLT
                 {
                     double nx = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"])));
                     double ny = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["y"])));
-                    SetCursorPos(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny));
-                    mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, IntPtr.Zero);
+                    MoveCursorHardware(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny));
                 }
 
                 string btn = args.ContainsKey("button") ? Convert.ToString(args["button"]) : "left";
