@@ -740,6 +740,161 @@ public class MainActivity extends Activity {
         return null;
     }
 
+    public static String getDeviceIdForSlot(Context context, int slotIndex) {
+        try {
+            JSONObject d = getDeviceForSlot(context, slotIndex);
+            if (d != null) {
+                return d.optString("deviceId", "").trim();
+            }
+        } catch (Exception ignored) {
+        }
+        return "";
+    }
+
+    public static boolean isDeviceLockedForSlot(Context context, int slotIndex) {
+        try {
+            JSONObject d = getDeviceForSlot(context, slotIndex);
+            if (d == null) return false;
+            String devId = d.optString("deviceId", "").trim();
+            SharedPreferences prefs = context.getSharedPreferences(QUICK_PREFS_NAME, Context.MODE_PRIVATE);
+            if (!devId.isEmpty() && prefs.contains("device_locked_" + devId)) {
+                return prefs.getBoolean("device_locked_" + devId, false);
+            }
+            return d.optBoolean("isLocked", false);
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
+    public static void setDeviceLockedForId(Context context, String deviceId, boolean isLocked) {
+        if (context == null || deviceId == null || deviceId.trim().isEmpty()) return;
+        try {
+            String cleanId = deviceId.trim();
+            SharedPreferences prefs = context.getSharedPreferences(QUICK_PREFS_NAME, Context.MODE_PRIVATE);
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.putBoolean("device_locked_" + cleanId, isLocked);
+
+            String activeRaw = prefs.getString(QUICK_PREFS_DEVICE_KEY, "");
+            if (activeRaw != null && !activeRaw.isEmpty()) {
+                try {
+                    JSONObject actObj = new JSONObject(activeRaw);
+                    if (cleanId.equals(actObj.optString("deviceId", "").trim())) {
+                        actObj.put("isLocked", isLocked);
+                        editor.putString(QUICK_PREFS_DEVICE_KEY, actObj.toString());
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+
+            String allRaw = prefs.getString(QUICK_PREFS_ALL_DEVICES_KEY, "");
+            if (allRaw != null && !allRaw.isEmpty()) {
+                try {
+                    JSONArray arr = new JSONArray(allRaw);
+                    boolean changed = false;
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject item = arr.optJSONObject(i);
+                        if (item != null && cleanId.equals(item.optString("deviceId", "").trim())) {
+                            item.put("isLocked", isLocked);
+                            changed = true;
+                        }
+                    }
+                    if (changed) {
+                        editor.putString(QUICK_PREFS_ALL_DEVICES_KEY, arr.toString());
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+
+            editor.apply();
+            updateMultiDeviceQsTileSlots(context, -1);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public static void queryDeviceLockStateAsync(final Context context, final int slotIndex, final Runnable onUpdated) {
+        if (context == null) return;
+        QUICK_ACTION_EXECUTOR.submit(() -> {
+            try {
+                JSONObject dev = getDeviceForSlot(context, slotIndex);
+                if (dev == null) return;
+                final String targetDevId = dev.optString("deviceId", "").trim();
+                String authToken = dev.optString("authToken", "").trim();
+                String pin = dev.optString("pin", dev.optString("pairCode", "")).trim();
+                if (targetDevId.isEmpty() || (authToken.isEmpty() && pin.isEmpty())) return;
+
+                JSONObject cmdObj = new JSONObject();
+                cmdObj.put("action", "get_full_state");
+                cmdObj.put("expectedDeviceId", targetDevId);
+                if (!authToken.isEmpty()) cmdObj.put("authToken", authToken);
+                if (!pin.isEmpty()) cmdObj.put("pin", pin);
+                cmdObj.put("params", new JSONObject());
+                final String bodyJson = cmdObj.toString();
+
+                List<String> urls = new ArrayList<>();
+                String lanIp = dev.optString("lanIp", "").trim();
+                if (!lanIp.isEmpty() && !"-".equals(lanIp)) {
+                    urls.add("http://" + lanIp + ":4850/api/command");
+                }
+                JSONArray lanIps = dev.optJSONArray("lanIps");
+                if (lanIps != null) {
+                    for (int i = 0; i < lanIps.length(); i++) {
+                        String ip = lanIps.optString(i, "").trim();
+                        if (!ip.isEmpty() && !"-".equals(ip)) {
+                            String u = "http://" + ip + ":4850/api/command";
+                            if (!urls.contains(u)) urls.add(u);
+                        }
+                    }
+                }
+                String tsIp = dev.optString("tailscaleIp", "").trim();
+                if (!tsIp.isEmpty() && !"-".equals(tsIp)) {
+                    String u = "http://" + tsIp + ":4850/api/command";
+                    if (!urls.contains(u)) urls.add(u);
+                }
+                String tunnelUrl = dev.optString("tunnelUrl", "").trim();
+                if (tunnelUrl.startsWith("http")) {
+                    String cleanT = tunnelUrl.endsWith("/") ? tunnelUrl.substring(0, tunnelUrl.length() - 1) : tunnelUrl;
+                    String u = cleanT + "/api/command";
+                    if (!urls.contains(u)) urls.add(u);
+                }
+
+                for (String u : urls) {
+                    int tMs = u.startsWith("https://") ? 2800 : 950;
+                    String res = postJsonStatic(u, bodyJson, tMs);
+                    if (res != null && res.contains("\"ok\":true")) {
+                        JSONObject root = new JSONObject(res);
+                        JSONObject data = root.optJSONObject("data");
+                        if (data != null) {
+                            JSONObject stats = data.optJSONObject("stats");
+                            if (stats != null && stats.has("isLocked")) {
+                                final boolean liveLocked = stats.optBoolean("isLocked", false);
+                                setDeviceLockedForId(context, targetDevId, liveLocked);
+                                if (onUpdated != null) {
+                                    new android.os.Handler(android.os.Looper.getMainLooper()).post(onUpdated);
+                                }
+                                final MainActivity inst = currentInstance;
+                                if (inst != null && inst.webView != null) {
+                                    inst.runOnUiThread(() -> {
+                                        try {
+                                            inst.webView.evaluateJavascript(
+                                                    "if(window.__onNativeDeviceLockUpdated) window.__onNativeDeviceLockUpdated("
+                                                            + JSONObject.quote(targetDevId) + ","
+                                                            + (liveLocked ? "true" : "false") + ");",
+                                                    null
+                                            );
+                                        } catch (Exception ignored) {
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
     public static String getShortDeviceNameForSlot(Context context, int slotIndex) {
         try {
             JSONObject d = getDeviceForSlot(context, slotIndex);
@@ -808,14 +963,46 @@ public class MainActivity extends Activity {
 
     public static void updateMultiDeviceQsTileSlots(Context context, int deviceCount) {
         try {
-            Class<?>[] slot1Classes = new Class<?>[]{
+            int count = deviceCount;
+            if (count < 0) {
+                SharedPreferences prefs = context.getSharedPreferences(QUICK_PREFS_NAME, Context.MODE_PRIVATE);
+                String allRaw = prefs.getString(QUICK_PREFS_ALL_DEVICES_KEY, "");
+                if (allRaw != null && !allRaw.isEmpty()) {
+                    try {
+                        count = new JSONArray(allRaw).length();
+                    } catch (Exception ignored) {
+                        count = 1;
+                    }
+                } else {
+                    count = 1;
+                }
+            }
+
+            try {
+                android.content.pm.PackageManager pm = context.getPackageManager();
+                android.content.ComponentName lock2Comp = new android.content.ComponentName(context, QsLockTileService2.class);
+                int desiredState = count >= 2
+                        ? android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                        : android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+                if (pm.getComponentEnabledSetting(lock2Comp) != desiredState) {
+                    pm.setComponentEnabledSetting(
+                            lock2Comp,
+                            desiredState,
+                            android.content.pm.PackageManager.DONT_KILL_APP
+                    );
+                }
+            } catch (Exception ignored) {
+            }
+
+            Class<?>[] tileClasses = new Class<?>[]{
                     QsMonitorsOnTileService.class,
                     QsMonitorsOffTileService.class,
                     QsLockTileService.class,
+                    QsLockTileService2.class,
                     QsSleepTileService.class,
                     QsShutdownTileService.class
             };
-            for (Class<?> cls : slot1Classes) {
+            for (Class<?> cls : tileClasses) {
                 try {
                     android.service.quicksettings.TileService.requestListeningState(
                             context,
@@ -963,6 +1150,31 @@ public class MainActivity extends Activity {
                 }
 
                 String successRes = winRef.get();
+                if (successRes != null && "toggle_lock".equals(quickAction) && !targetDevId.isEmpty()) {
+                    try {
+                        JSONObject root = new JSONObject(successRes);
+                        JSONObject data = root.optJSONObject("data");
+                        if (data != null && data.has("isLocked")) {
+                            final boolean actualLocked = data.optBoolean("isLocked", false);
+                            setDeviceLockedForId(context, targetDevId, actualLocked);
+                            final MainActivity instLock = currentInstance;
+                            if (instLock != null && instLock.webView != null) {
+                                instLock.runOnUiThread(() -> {
+                                    try {
+                                        instLock.webView.evaluateJavascript(
+                                                "if(window.__onNativeDeviceLockUpdated) window.__onNativeDeviceLockUpdated("
+                                                        + JSONObject.quote(targetDevId) + ","
+                                                        + (actualLocked ? "true" : "false") + ");",
+                                                null
+                                        );
+                                    } catch (Exception ignored) {
+                                    }
+                                });
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
 
                 final String finalRes = successRes != null ? successRes : "";
                 final MainActivity inst = currentInstance;
@@ -1096,7 +1308,22 @@ public class MainActivity extends Activity {
             try {
                 SharedPreferences prefs = context.getSharedPreferences(QUICK_PREFS_NAME, Context.MODE_PRIVATE);
                 prefs.edit().putString(QUICK_PREFS_DEVICE_KEY, deviceJson != null ? deviceJson : "").apply();
-                updateMultiDeviceQsTileSlots(context, 1);
+                if (deviceJson != null && !deviceJson.isEmpty()) {
+                    JSONObject obj = new JSONObject(deviceJson);
+                    String devId = obj.optString("deviceId", "").trim();
+                    if (!devId.isEmpty() && obj.has("isLocked")) {
+                        prefs.edit().putBoolean("device_locked_" + devId, obj.optBoolean("isLocked", false)).apply();
+                    }
+                }
+                updateMultiDeviceQsTileSlots(context, -1);
+            } catch (Exception ignored) {
+            }
+        }
+
+        @JavascriptInterface
+        public void syncDeviceLockState(final String deviceId, final boolean isLocked) {
+            try {
+                setDeviceLockedForId(context, deviceId, isLocked);
             } catch (Exception ignored) {
             }
         }
@@ -1106,8 +1333,19 @@ public class MainActivity extends Activity {
             try {
                 String safeJson = allDevicesJson != null ? allDevicesJson : "[]";
                 SharedPreferences prefs = context.getSharedPreferences(QUICK_PREFS_NAME, Context.MODE_PRIVATE);
-                prefs.edit().putString(QUICK_PREFS_ALL_DEVICES_KEY, safeJson).apply();
+                SharedPreferences.Editor ed = prefs.edit();
+                ed.putString(QUICK_PREFS_ALL_DEVICES_KEY, safeJson);
                 JSONArray arr = new JSONArray(safeJson);
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject item = arr.optJSONObject(i);
+                    if (item != null) {
+                        String id = item.optString("deviceId", "").trim();
+                        if (!id.isEmpty() && item.has("isLocked")) {
+                            ed.putBoolean("device_locked_" + id, item.optBoolean("isLocked", false));
+                        }
+                    }
+                }
+                ed.apply();
                 updateMultiDeviceQsTileSlots(context, arr.length());
             } catch (Exception ignored) {
             }

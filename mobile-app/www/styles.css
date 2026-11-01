@@ -2155,28 +2155,33 @@ body.modal-open .main-viewport {
 
 .power-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
   gap: 10px;
   margin-top: 12px;
 }
 
 .power-card {
-  padding: 16px;
+  padding: 14px;
+  height: 100%;
   background-color: var(--bg-carbon);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   text-align: left;
   color: var(--ink-primary);
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 .power-card-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .power-card-icon {
@@ -2191,13 +2196,32 @@ body.modal-open .main-viewport {
 }
 
 .power-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .power-sub {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ink-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tactile-tile.is-locked-active,
+.power-card.is-locked-active {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+  border: 1px solid rgba(16, 185, 129, 0.42) !important;
+  color: #FAFAFA !important;
+}
+
+.tactile-tile.is-locked-active .tile-icon,
+.power-card.is-locked-active .power-card-icon,
+.power-card.is-locked-active .power-title {
+  color: var(--accent-emerald) !important;
 }
 
 .power-warn {
@@ -3389,16 +3413,25 @@ body.modal-open .main-viewport {
   flex: 1;
 }
 
-.monitors-brightness-list {
+.monitors-brightness-list,
+.brightness-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .monitor-brightness-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
+  padding: 14px 16px;
+  background-color: var(--bg-obsidian);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.monitor-brightness-item .audio-row-top {
+  margin-bottom: 0;
 }
 
 /* TOAST NOTIFICATION */
@@ -4424,7 +4457,7 @@ select.input-field {
 .remote-workstation.is-screen-off #hudMonitorCycleBtn,
 .remote-workstation.is-screen-off #hudKeyboardBtn,
 .remote-workstation.is-screen-off .keyboard-panel,
-body:not(.layout-edit-mode) #tab-remote.is-remote-screen-off .remote-screen-only-widget {
+#tab-remote.is-remote-screen-off .remote-screen-only-widget {
   display: none !important;
 }
 
@@ -4921,6 +4954,10 @@ select.input-field:focus-visible,
   flex: 1 1 48px;
 }
 
+.layout-header-item {
+  margin-bottom: -4px;
+}
+
 .layout-widget-card,
 .audio-standalone-card,
 .wireless-standalone-card,
@@ -4929,6 +4966,10 @@ select.input-field:focus-visible,
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 12px 14px;
+}
+
+.audio-standalone-card .audio-row-top {
+  margin-bottom: 8px;
 }
 
 .audio-standalone-card .now-playing-banner,
@@ -4948,9 +4989,9 @@ select.input-field:focus-visible,
 }
 
 /* =========================================================================
-   NORMAL MODE SEAMLESS MERGED GROUPS (Unified Look When Not Editing)
+   SEAMLESS MERGED GROUPS (Identical Geometry in Normal & Edit Mode)
    ========================================================================= */
-body:not(.layout-edit-mode) [data-layout-container] > [data-layout-group].is-group-merged-top {
+[data-layout-container] > [data-layout-group].is-group-merged-top {
   margin-bottom: 0 !important;
   background-color: var(--bg-carbon);
   border: 1px solid var(--border-subtle);
@@ -4962,24 +5003,24 @@ body:not(.layout-edit-mode) [data-layout-container] > [data-layout-group].is-gro
   padding: 12px 14px 8px 14px;
 }
 
-body:not(.layout-edit-mode) [data-layout-container] > [data-layout-group].is-group-merged-mid {
+[data-layout-container] > [data-layout-group].is-group-merged-mid {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
   background-color: var(--bg-carbon);
   border-left: 1px solid var(--border-subtle) !important;
   border-right: 1px solid var(--border-subtle) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
   border-bottom: none !important;
   border-radius: 0 !important;
   padding: 10px 14px;
 }
 
-body:not(.layout-edit-mode) [data-layout-container] > [data-layout-group].is-group-merged-bottom {
+[data-layout-container] > [data-layout-group].is-group-merged-bottom {
   margin-top: 0 !important;
-  margin-bottom: 14px !important;
+  margin-bottom: 0 !important;
   background-color: var(--bg-carbon);
   border: 1px solid var(--border-subtle) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
   border-top-left-radius: 0 !important;
   border-top-right-radius: 0 !important;
   border-bottom-left-radius: var(--radius-md) !important;
@@ -4987,41 +5028,40 @@ body:not(.layout-edit-mode) [data-layout-container] > [data-layout-group].is-gro
   padding: 10px 14px 12px 14px;
 }
 
+/* Tight, seamless spacing inside Audio & Media Mixer group */
+[data-layout-container] > [data-layout-group="audio"].is-group-merged-top {
+  padding: 12px 14px 6px 14px !important;
+}
+
+[data-layout-container] > [data-layout-group="audio"].is-group-merged-mid {
+  border-top: none !important;
+  padding: 5px 14px !important;
+}
+
+[data-layout-container] > [data-layout-group="audio"].is-group-merged-bottom {
+  border-top: none !important;
+  padding: 6px 14px 12px 14px !important;
+}
+
 /* Keep Apps Header + Search + Filters visually clean without forcing a card box around the title */
-body:not(.layout-edit-mode) #tab-apps [data-layout-group="apps_top"].is-group-merged-top,
-body:not(.layout-edit-mode) #tab-apps [data-layout-group="apps_top"].is-group-merged-mid,
-body:not(.layout-edit-mode) #tab-apps [data-layout-group="apps_top"].is-group-merged-bottom {
+#tab-apps [data-layout-group="apps_top"].is-group-merged-top,
+#tab-apps [data-layout-group="apps_top"].is-group-merged-mid,
+#tab-apps [data-layout-group="apps_top"].is-group-merged-bottom {
   background-color: transparent !important;
   border: none !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
 
-body:not(.layout-edit-mode) #tab-apps [data-layout-id="apps_header"].is-group-merged-top {
+#tab-apps [data-layout-id="apps_header"].is-group-merged-top {
   padding-top: 0 !important;
   padding-bottom: 4px !important;
 }
 
-body:not(.layout-edit-mode) #tab-apps [data-layout-id="apps_search"].is-group-merged-mid {
+#tab-apps [data-layout-id="apps_search"].is-group-merged-mid,
+#tab-apps [data-layout-id="apps_search"].is-group-merged-bottom {
   padding-top: 2px !important;
-  padding-bottom: 8px !important;
-}
-
-body:not(.layout-edit-mode) #tab-apps [data-layout-id="apps_filters"].is-group-merged-bottom {
-  padding-top: 0 !important;
-  padding-bottom: 2px !important;
-}
-
-/* Keep Remote Console header + touchpad + mouse buttons + keyboard seamlessly joined */
-body:not(.layout-edit-mode) [data-layout-id="remote_mouse_buttons"].is-group-merged-mid,
-body:not(.layout-edit-mode) [data-layout-id="remote_mouse_buttons"].is-group-merged-bottom {
-  padding: 0 !important;
-}
-
-body:not(.layout-edit-mode) [data-layout-id="remote_mouse_buttons"].is-group-merged-mid .mouse-click-bar,
-body:not(.layout-edit-mode) [data-layout-id="remote_mouse_buttons"].is-group-merged-bottom .mouse-click-bar {
-  border-top-left-radius: 0 !important;
-  border-top-right-radius: 0 !important;
+  padding-bottom: 4px !important;
 }
 
 /* Layout Edit Floating Banner */
@@ -5096,7 +5136,7 @@ body.layout-edit-mode .bottom-nav .nav-item.is-drop-hover {
 }
 
 /* =========================================================================
-   STABLE TOP-LEFT 6-DOT RECTANGULAR GRIP ICON (ONLY DRAG HANDLE IN EDIT MODE)
+   STABLE TOP-LEFT 6-DOT RECTANGULAR GRIP ICON (ZERO SIZE CHANGE IN EDIT MODE)
    ========================================================================= */
 .layout-grip-dots {
   display: none;
@@ -5104,12 +5144,9 @@ body.layout-edit-mode .bottom-nav .nav-item.is-drop-hover {
 
 body.layout-edit-mode [data-layout-id] {
   position: relative !important;
-  border: 1.5px dashed rgba(255, 255, 255, 0.24) !important;
-  border-radius: 14px !important;
-  padding: 12px 12px 12px 42px !important;
-  margin-bottom: 12px !important;
-  background-color: rgba(24, 24, 28, 0.82) !important;
-  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), border-color 140ms ease, box-shadow 140ms ease;
+  outline: 1.5px dashed rgba(255, 255, 255, 0.26) !important;
+  outline-offset: -1px !important;
+  transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 140ms ease;
   user-select: none;
   -webkit-user-select: none;
   touch-action: pan-y !important;
@@ -5122,19 +5159,20 @@ body.layout-edit-mode [data-layout-id] > *:not(.layout-grip-dots) {
 body.layout-edit-mode [data-layout-id] > .layout-grip-dots {
   display: inline-flex !important;
   position: absolute !important;
-  left: 9px !important;
-  top: 10px !important;
+  left: 6px !important;
+  top: 6px !important;
   right: auto !important;
   width: 24px !important;
-  height: 28px !important;
+  height: 26px !important;
   margin: 0 !important;
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-  color: var(--ink-primary);
-  background-color: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  z-index: 12;
+  color: #FFFFFF;
+  background-color: rgba(18, 18, 22, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  z-index: 18;
   cursor: grab;
   pointer-events: auto !important;
   touch-action: none !important;
@@ -5142,32 +5180,27 @@ body.layout-edit-mode [data-layout-id] > .layout-grip-dots {
 
 body.layout-edit-mode [data-layout-id] > .layout-grip-dots:active {
   cursor: grabbing;
-  background-color: rgba(16, 185, 129, 0.28);
+  background-color: rgba(16, 185, 129, 0.92);
   border-color: #10B981;
   color: #FFFFFF;
 }
 
 body.layout-edit-mode [data-layout-id] > .layout-grip-dots svg {
-  width: 13px;
-  height: 15px;
+  width: 12px;
+  height: 14px;
   display: block;
   pointer-events: none;
 }
 
 body.layout-edit-mode [data-layout-id].is-layout-dragging {
   z-index: 88 !important;
-  border: 1.5px solid #FFFFFF !important;
-  background-color: rgba(28, 28, 34, 0.96) !important;
+  outline: 1.5px solid #10B981 !important;
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.65) !important;
   transition: none !important;
 }
 
 .layout-magnet-slot {
-  border: 2px dashed rgba(16, 185, 129, 0.68);
-  background-color: rgba(16, 185, 129, 0.07);
-  border-radius: 14px;
-  margin-bottom: 12px;
-  box-sizing: border-box;
-  transition: height 140ms ease;
+  outline: 2px dashed rgba(16, 185, 129, 0.75) !important;
+  outline-offset: -1px !important;
 }
 

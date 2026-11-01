@@ -230,7 +230,7 @@
 
                 <div class="setting-action-row">
                   <div class="setting-meta">
-                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.4</span>
+                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.5</span>
                     <span class="setting-desc" id="updateStatusCaption">GitHub (blttaha/bridge) üzerinden mobil ve masaüstü sürümlerini denetleyin</span>
                   </div>
                   <button type="button" class="btn-compact btn-secondary" id="btnCheckUpdatesSetting">Denetle</button>
@@ -481,7 +481,7 @@
 
         <!-- TAB 4: KONTROL (EKRANSIZ MOUSE/TOUCHPAD, CANLI MASAÜSTÜ, EKRANLAR & PENCERELER) -->
         <section class="tab-panel is-remote-screen-off" id="tab-remote" data-layout-container="tab-remote">
-          <div class="remote-workstation is-screen-off" id="remoteWorkstation" data-layout-id="remote_workstation" data-layout-group="remote_console" data-layout-label="Touchpad ve Canlı Ekran">
+          <div class="remote-workstation is-screen-off" id="remoteWorkstation" data-layout-id="remote_workstation" data-layout-label="Touchpad ve Canlı Ekran">
             <!-- Top Remote Bar: Monitor Switcher + Stream Toggle + Mouse/Touch Mode + Fullscreen & Keyboard -->
             <div class="remote-header-bar">
               <div class="remote-touchpad-header-title" id="remoteTouchpadHeaderTitle">
@@ -585,7 +585,7 @@
           </div>
 
           <!-- GRANULAR ITEM: PC METİN YAZDIRMA FORMU -->
-          <div class="layout-widget-card remote-screen-only-widget" id="remoteTextFormWidget" data-layout-id="remote_text_form" data-layout-group="remote_console" data-layout-label="Bilgisayara Metin Yazdır">
+          <div class="layout-widget-card remote-screen-only-widget" id="remoteTextFormWidget" data-layout-id="remote_text_form" data-layout-label="Bilgisayara Metin Yazdır">
             <form class="remote-text-form" id="remoteTextForm">
               <input
                 type="text"
@@ -599,7 +599,7 @@
           </div>
 
           <!-- GRANULAR ITEM: KLAVYE KISAYOL TUŞ TAKIMI -->
-          <div class="layout-widget-card remote-screen-only-widget" id="remoteHotkeyDeckWidget" data-layout-id="remote_hotkey_deck" data-layout-group="remote_console" data-layout-label="Klavye Kısayol Tuşları">
+          <div class="layout-widget-card remote-screen-only-widget" id="remoteHotkeyDeckWidget" data-layout-id="remote_hotkey_deck" data-layout-label="Klavye Kısayol Tuşları">
             <div class="kbd-category-tabs">
               <button type="button" class="kbd-cat-btn active" data-kbd-cat="basic">Temel</button>
               <button type="button" class="kbd-cat-btn" data-kbd-cat="edit">Düzen</button>
@@ -680,7 +680,7 @@
           </div>
 
           <!-- GRANULAR ITEM: MONİTÖR TOPOLOJİSİ KARTLARI -->
-          <div class="section-block control-monitors-section" data-layout-id="remote_monitors" data-layout-group="monitors" data-layout-label="Monitör Topolojisi">
+          <div class="section-block control-monitors-section" data-layout-id="remote_monitors" data-layout-label="Monitör Topolojisi">
             <div class="section-header-stack">
               <div class="section-header-top">
                 <h2 class="section-title">Monitör Topolojisi</h2>
@@ -711,7 +711,7 @@
           </div>
 
           <!-- GRANULAR ITEM: WINDOWS GÖRÜNTÜ YANSITMA MODU -->
-          <div class="sub-panel layout-standalone-subpanel" data-layout-id="remote_display_mode" data-layout-group="monitors" data-layout-label="Görüntü Yansıtma Modu">
+          <div class="sub-panel layout-standalone-subpanel" data-layout-id="remote_display_mode" data-layout-label="Görüntü Yansıtma Modu">
             <div class="sub-panel-header">
               <span class="sub-panel-title">Windows Görüntü Yansıtma Modu</span>
             </div>
@@ -741,55 +741,54 @@
 
         <!-- TAB 5: SİSTEM, SES MİKSERİ, ZAMANLAYICI & GÜÇ -->
         <section class="tab-panel" id="tab-system" data-layout-container="tab-system">
+          <!-- GRANULAR ITEM 0: SES VE MEDYA BAŞLIĞI -->
+          <div class="section-header-row layout-header-item" data-layout-id="sys_audio_header" data-layout-label="Ses ve Medya Başlığı">
+            <div>
+              <h1 class="section-title-lg">Ses ve Medya Mikseri</h1>
+              <p class="section-subtitle">Ana çıkış ve uygulama bazlı bağımsız ses kontrolü</p>
+            </div>
+          </div>
+
           <!-- GRANULAR ITEM 1: ANA SİSTEM SESİ VE MİKSER -->
-          <div class="section-block" data-layout-id="sys_audio_master" data-layout-group="audio" data-layout-label="Ana Sistem Sesi">
-            <div class="section-header-row">
-              <div>
-                <h1 class="section-title-lg">Ses ve Medya Mikseri</h1>
-                <p class="section-subtitle">Ana çıkış ve uygulama bazlı bağımsız ses kontrolü</p>
+          <div class="audio-standalone-card" data-layout-id="sys_audio_master" data-layout-group="audio" data-layout-label="Ana Sistem Sesi">
+            <div class="audio-row-top">
+              <div class="audio-label-group">
+                <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M9 5L5.5 8H3v4h2.5L9 15V5z" stroke-linejoin="round" />
+                  <path d="M12.5 7.5a3.5 3.5 0 0 1 0 5M15 5a7 7 0 0 1 0 10" stroke-linecap="round" />
+                </svg>
+                <span class="audio-label">Ana Sistem Sesi</span>
+              </div>
+              <div class="audio-row-right">
+                <span class="mono-stat" id="masterVolumeValue">100%</span>
+                <button type="button" class="icon-btn icon-btn-sm" id="openAppMixerBtn" title="Uygulama Bazlı Ses Mikseri" aria-label="Uygulama Bazlı Ses Mikseri">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M4 6h12M4 10h12M4 14h12" stroke-linecap="round" />
+                    <circle cx="7.5" cy="6" r="1.8" fill="currentColor" />
+                    <circle cx="12.5" cy="10" r="1.8" fill="currentColor" />
+                    <circle cx="8.5" cy="14" r="1.8" fill="currentColor" />
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn-sm" id="micMuteBtn" title="Mikrofonu Sustur / Aç" aria-label="Mikrofonu Sustur / Aç">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <rect x="7" y="2.5" width="6" height="9.5" rx="3" />
+                    <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5M7 17.5h6" stroke-linecap="round" />
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn icon-btn-sm" id="masterMuteBtn" title="Sesi Kapat / Aç" aria-label="Sesi Kapat / Aç">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M9 5L5.5 8H3v4h2.5L9 15V5z" stroke-linejoin="round" />
+                    <path d="M13 8l4 4M17 8l-4 4" stroke-linecap="round" />
+                  </svg>
+                </button>
               </div>
             </div>
+            <input type="range" class="volume-slider" id="masterVolumeSlider" min="0" max="100" value="100" />
 
-            <div class="audio-master-card">
-              <div class="audio-row-top">
-                <div class="audio-label-group">
-                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                    <path d="M9 5L5.5 8H3v4h2.5L9 15V5z" stroke-linejoin="round" />
-                    <path d="M12.5 7.5a3.5 3.5 0 0 1 0 5M15 5a7 7 0 0 1 0 10" stroke-linecap="round" />
-                  </svg>
-                  <span class="audio-label">Ana Sistem Sesi</span>
-                </div>
-                <div class="audio-row-right">
-                  <span class="mono-stat" id="masterVolumeValue">100%</span>
-                  <button type="button" class="icon-btn icon-btn-sm" id="openAppMixerBtn" title="Uygulama Bazlı Ses Mikseri" aria-label="Uygulama Bazlı Ses Mikseri">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <path d="M4 6h12M4 10h12M4 14h12" stroke-linecap="round" />
-                      <circle cx="7.5" cy="6" r="1.8" fill="currentColor" />
-                      <circle cx="12.5" cy="10" r="1.8" fill="currentColor" />
-                      <circle cx="8.5" cy="14" r="1.8" fill="currentColor" />
-                    </svg>
-                  </button>
-                  <button type="button" class="icon-btn icon-btn-sm" id="micMuteBtn" title="Mikrofonu Sustur / Aç" aria-label="Mikrofonu Sustur / Aç">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <rect x="7" y="2.5" width="6" height="9.5" rx="3" />
-                      <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5M7 17.5h6" stroke-linecap="round" />
-                    </svg>
-                  </button>
-                  <button type="button" class="icon-btn icon-btn-sm" id="masterMuteBtn" title="Sesi Kapat / Aç" aria-label="Sesi Kapat / Aç">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <path d="M9 5L5.5 8H3v4h2.5L9 15V5z" stroke-linejoin="round" />
-                      <path d="M13 8l4 4M17 8l-4 4" stroke-linecap="round" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <input type="range" class="volume-slider" id="masterVolumeSlider" min="0" max="100" value="100" />
-
-              <!-- Audio Output Device Switcher (Speakers / Headphones / HDMI) -->
-              <div class="audio-device-picker-row hidden" id="audioOutputDeviceRow">
-                <label class="audio-device-label" for="audioOutputDeviceSelect">Çıkış Cihazı</label>
-                <select class="input-field audio-device-select" id="audioOutputDeviceSelect"></select>
-              </div>
+            <!-- Audio Output Device Switcher (Speakers / Headphones / HDMI) -->
+            <div class="audio-device-picker-row hidden" id="audioOutputDeviceRow">
+              <label class="audio-device-label" for="audioOutputDeviceSelect">Çıkış Cihazı</label>
+              <select class="input-field audio-device-select" id="audioOutputDeviceSelect"></select>
             </div>
           </div>
 
@@ -885,41 +884,39 @@
             </div>
           </div>
 
-          <!-- GRANULAR WIRELESS ITEMS: WI-FI, HOTSPOT, BLUETOOTH INDEPENDENTLY MOVABLE -->
-          <div class="section-block" data-layout-id="sys_wireless_wifi" data-layout-group="wireless" data-layout-label="Wi-Fi Ağı">
-            <div class="section-header-row">
-              <div>
-                <h2 class="section-title">Kablosuz Bağlantılar</h2>
-                <p class="section-subtitle">PC Wi-Fi, Mobil Erişim Noktası ve Bluetooth yönetimi</p>
-              </div>
-              <button type="button" class="icon-btn icon-btn-sm" id="refreshWirelessBtn" title="Kablosuz Durumu Yenile" aria-label="Yenile">
-                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <path d="M14.8 9a5.8 5.8 0 1 1-1.7-4.1L14.8 6.5M14.8 3.2v3.3h-3.3" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </button>
+          <!-- GRANULAR WIRELESS ITEMS: HEADER + WI-FI, HOTSPOT, BLUETOOTH INDEPENDENTLY MOVABLE -->
+          <div class="section-header-row layout-header-item" data-layout-id="sys_wireless_header" data-layout-label="Kablosuz Bağlantılar Başlığı">
+            <div>
+              <h2 class="section-title">Kablosuz Bağlantılar</h2>
+              <p class="section-subtitle">PC Wi-Fi, Mobil Erişim Noktası ve Bluetooth yönetimi</p>
             </div>
+            <button type="button" class="icon-btn icon-btn-sm" id="refreshWirelessBtn" title="Kablosuz Durumu Yenile" aria-label="Yenile">
+              <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M14.8 9a5.8 5.8 0 1 1-1.7-4.1L14.8 6.5M14.8 3.2v3.3h-3.3" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
 
-            <div class="sub-panel wireless-control-panel">
-              <div class="wireless-item-row">
-                <div class="wireless-item-left">
-                  <div class="wireless-icon-badge" id="wifiIconBadge">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <path d="M2.5 7.5a11 11 0 0 1 15 0M5.2 10.5a7.2 7.2 0 0 1 9.6 0M8 13.5a3.2 3.2 0 0 1 4 0" stroke-linecap="round"/>
-                      <circle cx="10" cy="16" r="1" fill="currentColor"/>
-                    </svg>
-                  </div>
-                  <div class="wireless-meta">
-                    <span class="wireless-title">Wi-Fi Ağı</span>
-                    <span class="wireless-sub" id="wifiCurrentStatusText">Durum alınıyor...</span>
-                  </div>
+          <div class="sub-panel wireless-standalone-card" data-layout-id="sys_wireless_wifi" data-layout-group="wireless" data-layout-label="Wi-Fi Ağı">
+            <div class="wireless-item-row">
+              <div class="wireless-item-left">
+                <div class="wireless-icon-badge" id="wifiIconBadge">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M2.5 7.5a11 11 0 0 1 15 0M5.2 10.5a7.2 7.2 0 0 1 9.6 0M8 13.5a3.2 3.2 0 0 1 4 0" stroke-linecap="round"/>
+                    <circle cx="10" cy="16" r="1" fill="currentColor"/>
+                  </svg>
                 </div>
-                <div class="wireless-item-actions">
-                  <button type="button" class="btn-secondary btn-compact" id="openWifiScannerBtn">Ağlar</button>
-                  <label class="switch-toggle">
-                    <input type="checkbox" id="wifiToggleSwitch" checked />
-                    <span class="slider round"></span>
-                  </label>
+                <div class="wireless-meta">
+                  <span class="wireless-title">Wi-Fi Ağı</span>
+                  <span class="wireless-sub" id="wifiCurrentStatusText">Durum alınıyor...</span>
                 </div>
+              </div>
+              <div class="wireless-item-actions">
+                <button type="button" class="btn-secondary btn-compact" id="openWifiScannerBtn">Ağlar</button>
+                <label class="switch-toggle">
+                  <input type="checkbox" id="wifiToggleSwitch" checked />
+                  <span class="slider round"></span>
+                </label>
               </div>
             </div>
           </div>
@@ -1031,7 +1028,7 @@
             </div>
           </div>
 
-          <div class="section-block" data-layout-id="sys_power" data-layout-group="power" data-layout-label="Güç ve Oturum Yönetimi">
+          <div class="section-block" data-layout-id="sys_power" data-layout-label="Güç ve Oturum Yönetimi">
             <h2 class="section-title">Güç ve Oturum Yönetimi</h2>
             <div class="power-grid">
               <button type="button" class="power-card" data-power="lock" id="powerLockBtn">
@@ -1075,7 +1072,7 @@
             </div>
           </div>
 
-          <div class="layout-standalone-action" data-layout-id="sys_function_prefs" data-layout-group="power" data-layout-label="Özelleştirmeler Butonu">
+          <div class="layout-standalone-action" data-layout-id="sys_function_prefs" data-layout-label="Özelleştirmeler Butonu">
             <button type="button" class="btn-secondary btn-full function-prefs-open-btn" id="openFunctionPrefsBtn">
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <path d="M4 6h8M15 6h1M4 14h2M9 14h7" stroke-linecap="round" />
@@ -2267,7 +2264,7 @@
           </button>
         </div>
         <div class="modal-body">
-          <div class="brightness-list" id="monitorsBrightnessList"></div>
+          <div class="monitors-brightness-list brightness-list" id="monitorsBrightnessList"></div>
         </div>
       </div>
     </div>

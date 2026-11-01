@@ -405,6 +405,23 @@
     } catch {}
   }
 
+  window.__onNativeDeviceLockUpdated = function (deviceId, isLocked) {
+    try {
+      const locked = Boolean(isLocked);
+      if (deviceId) {
+        const dev = state.devices.find((d) => d.deviceId === deviceId);
+        if (dev) {
+          dev.isLocked = locked;
+        }
+      }
+      if (!deviceId || deviceId === state.activeDeviceId) {
+        state.isPcLocked = locked;
+        if (state.stats) state.stats.isLocked = locked;
+        renderLockStateUi();
+      }
+    } catch {}
+  };
+
   window.__onNativeActiveDeviceCycled = function (nextDeviceId) {
     try {
       if (!nextDeviceId || state.activeDeviceId === nextDeviceId) return;
@@ -582,9 +599,11 @@
     state.fsEntries = [];
     state.fsCurrentPath = '';
     state.fsParentPath = '';
+    const targetDev = targetDeviceId ? state.devices.find((d) => d.deviceId === targetDeviceId) : null;
+    const cachedLocked = Boolean(targetDev && targetDev.isLocked);
     state.audio = { masterVolume: 100, masterMuted: false, sessions: [] };
-    state.stats = { cpuPercent: 0, memoryPercent: 0, usedRamGb: 0, totalRamGb: 0, isLocked: false };
-    state.isPcLocked = false;
+    state.stats = { cpuPercent: 0, memoryPercent: 0, usedRamGb: 0, totalRamGb: 0, isLocked: cachedLocked };
+    state.isPcLocked = cachedLocked;
     state.powerTimer = { active: false, mode: 'sleep', targetTs: 0, remainingSec: 0 };
 
     if (targetDeviceId) {
@@ -1863,20 +1882,37 @@
 
   function renderLockStateUi() {
     const locked = Boolean(state.isPcLocked);
+    const activeDev = getActiveDevice();
+    if (activeDev && activeDev.deviceId) {
+      activeDev.isLocked = locked;
+      try {
+        if (window.TahaNative && typeof window.TahaNative.syncDeviceLockState === 'function') {
+          window.TahaNative.syncDeviceLockState(activeDev.deviceId, locked);
+        }
+      } catch {}
+    }
+
+    const quickBtn = document.getElementById('quickLockBtn') || document.querySelector('[data-quick="lock-pc"]');
     const quickLbl = document.getElementById('quickLockLabel');
     const quickIcon = document.getElementById('quickLockIcon');
+    const powerBtn = document.getElementById('powerLockBtn');
     const powerTitle = document.getElementById('powerLockTitle');
     const powerSub = document.getElementById('powerLockSub');
     const powerIcon = document.getElementById('powerLockIcon');
 
+    // When locked === true: CLOSED padlock icon + active highlight
+    // When locked === false: OPEN padlock icon + passive state
     const lockPathHtml = locked
-      ? `<rect x="4" y="9" width="12" height="8" rx="1.5" /><path d="M7 9V6.5a3 3 0 0 1 5.6-1.5" stroke-linecap="round" />`
-      : `<rect x="4" y="9" width="12" height="8" rx="1.5" /><path d="M7 9V6.5a3 3 0 0 1 6 0V9" stroke-linecap="round" />`;
+      ? `<rect x="4.5" y="9" width="11" height="7.5" rx="1.5" /><path d="M7 9V6.5a3 3 0 0 1 6 0V9" stroke-linecap="round" />`
+      : `<rect x="4.5" y="9" width="11" height="7.5" rx="1.5" /><path d="M7 9V6.2a3 3 0 0 1 5.6-1.5" stroke-linecap="round" />`;
 
-    if (quickLbl) quickLbl.textContent = locked ? 'Kilidi Aç' : 'Kilitle';
+    if (quickBtn) quickBtn.classList.toggle('is-locked-active', locked);
+    if (quickLbl) quickLbl.textContent = locked ? 'Kilitli' : 'Kilitle';
     if (quickIcon) quickIcon.innerHTML = lockPathHtml;
-    if (powerTitle) powerTitle.textContent = locked ? 'Kilidi Aç' : 'Kilitle';
-    if (powerSub) powerSub.textContent = locked ? 'Ekran kilidini aç' : 'Ekranları kilitle ve kapat';
+
+    if (powerBtn) powerBtn.classList.toggle('is-locked-active', locked);
+    if (powerTitle) powerTitle.textContent = locked ? 'Kilitli' : 'Kilitle';
+    if (powerSub) powerSub.textContent = locked ? 'Dokunarak kilidi aç' : 'Ekranları kilitle';
     if (powerIcon) powerIcon.innerHTML = lockPathHtml;
   }
 
@@ -1887,6 +1923,11 @@
       state.isPcLocked = res.isLocked;
     } else {
       state.isPcLocked = !state.isPcLocked;
+    }
+    const activeDev = getActiveDevice();
+    if (activeDev) {
+      activeDev.isLocked = Boolean(state.isPcLocked);
+      saveDevicesToStorage();
     }
     renderLockStateUi();
     const text = (res && res.message) || (state.isPcLocked ? 'Bilgisayar kilitlendi' : 'Bilgisayar kilidi açıldı');
@@ -7027,7 +7068,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.4';
+    let currentAppVer = '2.19.5';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -7597,7 +7638,7 @@
       strip.innerHTML = items.map(t => {
         const lockIdAttr = t.id === 'lock-pc' ? 'id="quickLockBtn"' : '';
         const lockLabelAttr = t.id === 'lock-pc' ? 'id="quickLockLabel"' : '';
-        const displayTitle = (t.id === 'lock-pc' && state.isPcLocked) ? 'Kilidi Aç' : t.title;
+        const displayTitle = (t.id === 'lock-pc' && state.isPcLocked) ? 'Kilitli' : t.title;
         return `
           <button type="button" class="tactile-tile" data-quick="${t.id}" ${lockIdAttr}>
             ${t.icon}
@@ -7605,6 +7646,7 @@
           </button>
         `;
       }).join('');
+      renderLockStateUi();
     }
 
     async function handleQuickTileAction(type) {
@@ -10289,13 +10331,11 @@
   }
 
   function syncMergedLayoutGroups() {
-    const isEdit = document.body.classList.contains('layout-edit-mode');
     document.querySelectorAll('[data-layout-container]').forEach((containerEl) => {
       const allItems = Array.from(containerEl.children).filter((el) => el.hasAttribute('data-layout-id'));
       allItems.forEach((el) => {
         el.classList.remove('is-group-merged-top', 'is-group-merged-mid', 'is-group-merged-bottom');
       });
-      if (isEdit) return;
 
       const visibleItems = allItems.filter((el) => {
         if (el.classList.contains('hidden')) return false;
@@ -10364,16 +10404,27 @@
       });
     });
 
-    // Second pass: ensure any unplaced items are in their default container in default order
+    // Second pass: ensure any unplaced items are inserted right before their default successor in their default container
     defaultGlobalLayoutMap.forEach((defaultIds, cid) => {
       const containerEl = document.getElementById(cid);
       if (!containerEl) return;
-      defaultIds.forEach((id) => {
+      defaultIds.forEach((id, idx) => {
         if (!placedIds.has(id)) {
           const el = globalLayoutItemsById.get(id);
           if (el) {
             ensureLayoutGripDots(el);
-            containerEl.appendChild(el);
+            let inserted = false;
+            for (let k = idx + 1; k < defaultIds.length; k++) {
+              const succEl = globalLayoutItemsById.get(defaultIds[k]);
+              if (succEl && succEl.parentElement === containerEl) {
+                containerEl.insertBefore(el, succEl);
+                inserted = true;
+                break;
+              }
+            }
+            if (!inserted) {
+              containerEl.appendChild(el);
+            }
             placedIds.add(id);
           }
         }
@@ -10483,6 +10534,8 @@
     let dragAnchorY = 0;
     let lastClientX = 0;
     let lastClientY = 0;
+    let prevMoveY = 0;
+    let lastSwapTs = 0;
     let autoScrollRaf = null;
     let hoveredTargetTab = null;
     let hoverTabSwitchTimer = null;
@@ -10530,11 +10583,14 @@
       dragItemEl.style.transform = '';
       newContainer.appendChild(dragItemEl);
       dragContainerEl = newContainer;
+      syncMergedLayoutGroups();
 
       const newRect = dragItemEl.getBoundingClientRect();
       dragAnchorY = newRect.top + newRect.height / 2;
+      prevMoveY = lastClientY;
+      lastSwapTs = performance.now();
       const dy = lastClientY - dragAnchorY;
-      dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.02)`;
+      dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
 
       persistAllContainersLayoutOrder();
       triggerHaptic(22);
@@ -10577,6 +10633,8 @@
       dragAnchorY = clientY;
       lastClientX = clientX;
       lastClientY = clientY;
+      prevMoveY = clientY;
+      lastSwapTs = 0;
       dragItemEl.classList.add('is-layout-dragging');
       dragItemEl.style.zIndex = '88';
       triggerHaptic(18);
@@ -10597,6 +10655,7 @@
           const actualScroll = dragContainerEl.scrollTop - prevScroll;
           if (actualScroll !== 0) {
             dragAnchorY -= actualScroll;
+            prevMoveY = lastClientY - (scrollDelta > 0 ? 2 : -2);
             updateMagneticDragPosition(lastClientX, lastClientY);
           }
         }
@@ -10608,6 +10667,8 @@
 
     const updateMagneticDragPosition = (clientX, clientY) => {
       if (!dragItemEl || !dragContainerEl) return;
+      const stepDy = clientY - prevMoveY;
+      prevMoveY = clientY;
       lastClientX = clientX;
       lastClientY = clientY;
       let dy = clientY - dragAnchorY;
@@ -10636,6 +10697,9 @@
         clearHoverTabSwitch();
       }
 
+      const now = performance.now();
+      if (now - lastSwapTs < 90) return;
+
       const draggedRect = dragItemEl.getBoundingClientRect();
 
       const siblings = Array.from(dragContainerEl.children).filter((el) => {
@@ -10646,36 +10710,40 @@
       const curIdx = siblings.indexOf(dragItemEl);
       if (curIdx === -1) return;
 
-      // Immediate Overlap Upward Swap: swap as soon as dragged item's top edge enters the item above!
-      if (curIdx > 0 && dy < -4) {
+      // Height-invariant midpoint swap UP (never oscillates between short and tall items!)
+      if (curIdx > 0 && stepDy < -0.4 && dy < -2) {
         const prevEl = siblings[curIdx - 1];
         const prevRect = prevEl.getBoundingClientRect();
-        const overlapTriggerY = prevRect.bottom - Math.min(18, prevRect.height * 0.25);
-        if (draggedRect.top < overlapTriggerY) {
-          const beforeTop = dragItemEl.getBoundingClientRect().top - dy;
+        const triggerY = prevRect.top + prevRect.height * 0.5 - 4;
+        if (draggedRect.top < triggerY) {
+          const beforeNaturalTop = draggedRect.top - dy;
           dragContainerEl.insertBefore(dragItemEl, prevEl);
-          const afterTop = dragItemEl.getBoundingClientRect().top - dy;
-          dragAnchorY += afterTop - beforeTop;
+          syncMergedLayoutGroups();
+          const afterNaturalTop = dragItemEl.getBoundingClientRect().top - dy;
+          dragAnchorY += afterNaturalTop - beforeNaturalTop;
           dy = clientY - dragAnchorY;
           dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
+          lastSwapTs = now;
           persistAllContainersLayoutOrder();
           triggerHaptic(10);
           return;
         }
       }
 
-      // Immediate Overlap Downward Swap: swap as soon as dragged item's bottom edge enters the item below!
-      if (curIdx < siblings.length - 1 && dy > 4) {
+      // Height-invariant midpoint swap DOWN (never oscillates between short and tall items!)
+      if (curIdx < siblings.length - 1 && stepDy > 0.4 && dy > 2) {
         const nextEl = siblings[curIdx + 1];
         const nextRect = nextEl.getBoundingClientRect();
-        const overlapTriggerY = nextRect.top + Math.min(18, nextRect.height * 0.25);
-        if (draggedRect.bottom > overlapTriggerY) {
-          const beforeTop = dragItemEl.getBoundingClientRect().top - dy;
+        const triggerY = nextRect.top + nextRect.height * 0.5 + 4;
+        if (draggedRect.bottom > triggerY) {
+          const beforeNaturalTop = draggedRect.top - dy;
           dragContainerEl.insertBefore(nextEl, dragItemEl);
-          const afterTop = dragItemEl.getBoundingClientRect().top - dy;
-          dragAnchorY += afterTop - beforeTop;
+          syncMergedLayoutGroups();
+          const afterNaturalTop = dragItemEl.getBoundingClientRect().top - dy;
+          dragAnchorY += afterNaturalTop - beforeNaturalTop;
           dy = clientY - dragAnchorY;
           dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
+          lastSwapTs = now;
           persistAllContainersLayoutOrder();
           triggerHaptic(10);
         }

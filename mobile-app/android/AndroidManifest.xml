@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.tahablt.bridge"
-    android:versionCode="12"
-    android:versionName="2.19.4">
+    android:versionCode="13"
+    android:versionName="2.19.5">
 
     <uses-sdk
         android:minSdkVersion="24"
@@ -82,7 +82,19 @@
             android:name=".QsLockTileService"
             android:exported="true"
             android:label="Kilitle"
-            android:icon="@drawable/qs_icon_lock"
+            android:icon="@drawable/qs_icon_unlock"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".QsLockTileService2"
+            android:enabled="false"
+            android:exported="true"
+            android:label="Kilitle (2. PC)"
+            android:icon="@drawable/qs_icon_unlock"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

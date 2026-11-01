@@ -1,6 +1,6 @@
 {
   "name": "bridge-pc-agent",
-  "version": "2.19.4",
+  "version": "2.19.5",
   "description": "Bridge PC agent (Windows and Linux)",
   "main": "server.js",
   "scripts": {
