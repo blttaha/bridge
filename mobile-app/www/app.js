@@ -387,7 +387,28 @@
       const raw = localStorage.getItem(STORAGE_DEVICES_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      if (window.TahaNative && typeof window.TahaNative.getSavedDevicesJson === 'function') {
+        const nativeRaw = window.TahaNative.getSavedDevicesJson();
+        if (nativeRaw) {
+          const nativeParsed = JSON.parse(nativeRaw);
+          if (Array.isArray(nativeParsed) && nativeParsed.length > 0) {
+            localStorage.setItem(STORAGE_DEVICES_KEY, JSON.stringify(nativeParsed));
+            if (!localStorage.getItem(STORAGE_ACTIVE_ID_KEY) && typeof window.TahaNative.getActiveDeviceJson === 'function') {
+              try {
+                const actRaw = window.TahaNative.getActiveDeviceJson();
+                const actObj = actRaw ? JSON.parse(actRaw) : null;
+                if (actObj && actObj.deviceId) {
+                  localStorage.setItem(STORAGE_ACTIVE_ID_KEY, actObj.deviceId);
+                } else if (nativeParsed[0] && nativeParsed[0].deviceId) {
+                  localStorage.setItem(STORAGE_ACTIVE_ID_KEY, nativeParsed[0].deviceId);
+                }
+              } catch {}
+            }
+            return nativeParsed;
+          }
+        }
       }
     } catch {}
     return [];
@@ -2925,7 +2946,10 @@
     const cursorEl = document.getElementById('remoteCursorLayer');
     if (!cursorEl) return;
     const show = remoteRender.cursorEnabled && remoteRender.cursorVisible && state.hasReceivedFrameOnce && !!remoteRender.cursorUrl;
-    cursorEl.classList.toggle('hidden', !show);
+    if (cursorEl.__lastShow !== show) {
+      cursorEl.classList.toggle('hidden', !show);
+      cursorEl.__lastShow = show;
+    }
     if (!show) return;
     const box = getRemoteContentBox();
     if (!box) return;
@@ -2933,8 +2957,16 @@
     const cursorScale = pxPerSrc;
     const x = box.left + state.cursorNormX * box.width - remoteRender.cursorHotX * cursorScale;
     const y = box.top + state.cursorNormY * box.height - remoteRender.cursorHotY * cursorScale;
-    cursorEl.style.width = `${(remoteRender.cursorW * cursorScale).toFixed(2)}px`;
-    cursorEl.style.height = `${(remoteRender.cursorH * cursorScale).toFixed(2)}px`;
+    const wCss = `${(remoteRender.cursorW * cursorScale).toFixed(2)}px`;
+    const hCss = `${(remoteRender.cursorH * cursorScale).toFixed(2)}px`;
+    if (cursorEl.__lastW !== wCss) {
+      cursorEl.style.width = wCss;
+      cursorEl.__lastW = wCss;
+    }
+    if (cursorEl.__lastH !== hCss) {
+      cursorEl.style.height = hCss;
+      cursorEl.__lastH = hCss;
+    }
     cursorEl.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
   }
 
@@ -3265,15 +3297,18 @@
       if (state.isStreaming) {
         const ctx = ensureRemoteCanvas(p.canvasW, p.canvasH);
         if (ctx) {
-          ctx.save();
-          if (!p.full) {
-            // Only the regions that changed are painted, so sharp top-off tiles elsewhere survive
+          if (p.full || !remoteRender.hasRefinedTiles) {
+            if (p.full) remoteRender.hasRefinedTiles = false;
+            ctx.drawImage(videoFrame, 0, 0, p.canvasW, p.canvasH);
+          } else {
+            ctx.save();
+            // Only the regions that changed are painted when sharp top-off tiles exist elsewhere on canvas
             ctx.beginPath();
             for (const r of p.rects) ctx.rect(r.x, r.y, r.w, r.h);
             ctx.clip();
+            ctx.drawImage(videoFrame, 0, 0, p.canvasW, p.canvasH);
+            ctx.restore();
           }
-          ctx.drawImage(videoFrame, 0, 0, p.canvasW, p.canvasH);
-          ctx.restore();
           remoteStats.drawMs += performance.now() - drawStart;
           markRemoteFramePainted();
         }
@@ -3307,10 +3342,11 @@
       canvas.width = w;
       canvas.height = h;
       remoteRender.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) || canvas.getContext('2d');
+      remoteRender.hasRefinedTiles = false;
     }
     const ctx = remoteRender.ctx;
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingQuality = 'low';
     return ctx;
   }
 
@@ -3487,8 +3523,18 @@
       return frameId;
     }
 
+    const isRefine = (flags & 0x02) !== 0;
+    // If a top-off refine frame arrives while newer motion/video frames are already queued behind it,
+    // skip decoding the stale refine JPEGs so motion resumes at 60 FPS without any stall.
+    if (isRefine && remoteRender.queue.length > 0) {
+      return frameId;
+    }
+
     // JPEG tiles (top-off / fallback) must land after any video frame still in the decoder
-    await waitForVideoDrain(200);
+    await waitForVideoDrain(120);
+    if (isRefine && remoteRender.queue.length > 0) {
+      return frameId;
+    }
     const images = await Promise.all(rects.map((r) => (r.bytes.length ? decodeJpeg(r.bytes).catch(() => null) : null)));
     if (!state.isStreaming) {
       images.forEach((im) => im && im.close && im.close());
@@ -3503,6 +3549,7 @@
       ctx.drawImage(im, r.x, r.y, r.w, r.h);
       if (im.close) im.close();
     }
+    if (isRefine) remoteRender.hasRefinedTiles = true;
     markRemoteFramePainted();
     return frameId;
   }
@@ -6087,24 +6134,68 @@
     let singleTapTimer = null;
     let lastTouchSampleTs = 0;
     let smoothedVelocity = 0;
+    let cachedBoxW = 340;
+    let cachedBoxH = 220;
+    let trackpadMoveRafId = 0;
 
-    // Windows Precision Touchpad / libinput-inspired continuous pointer acceleration curve (px/ms)
-    function computeSmartTrackpadGain(instVelocityPxPerMs, stepHypotPx) {
-      // Exponential moving average so single-frame touch jitter doesn't spike cursor speed
-      smoothedVelocity = smoothedVelocity * 0.55 + instVelocityPxPerMs * 0.45;
+    // Continuous, C1-smooth pointer acceleration curve (px/ms) without branch discontinuities
+    function computeSmartTrackpadGain(instVelocityPxPerMs, dtMs) {
+      const alpha = 1 - Math.exp(-Math.max(6, dtMs) / 24);
+      smoothedVelocity = smoothedVelocity * (1 - alpha) + instVelocityPxPerMs * alpha;
       const v = Math.max(0, smoothedVelocity);
 
-      // 1. Sub-pixel Precision Zone (< 0.18 px/ms): damped gain (0.48x -> 0.92x) for effortless pixel-level targeting
-      if (v < 0.18 && stepHypotPx < 2.8) {
-        return 0.48 + (v / 0.18) * 0.44;
+      // Smooth S-curve & ballistic ramp:
+      // v = 0.00 -> 0.56x (fine pixel targeting)
+      // v = 0.20 -> 0.96x (1:1 natural tracking)
+      // v = 0.85 -> 1.78x (comfortable sweep)
+      // v > 0.85 -> up to 3.15x (fast multi-monitor flick)
+      if (v <= 0.20) {
+        const t = v / 0.20;
+        return 0.56 + t * t * (3 - 2 * t) * 0.40;
       }
-      // 2. Comfort Tracking Zone (0.18 -> 0.85 px/ms): smooth linear ramp (0.92x -> 1.75x)
       if (v <= 0.85) {
-        return 0.92 + ((v - 0.18) / 0.67) * 0.83;
+        return 0.96 + ((v - 0.20) / 0.65) * 0.82;
       }
-      // 3. Ballistic Flick Zone (> 0.85 px/ms): progressive power boost up to 3.25x to traverse dual monitors in one flick
       const excess = v - 0.85;
-      return Math.min(3.25, 1.75 + Math.pow(excess, 1.08) * 0.92);
+      return Math.min(3.15, 1.78 + Math.pow(excess, 1.05) * 0.88);
+    }
+
+    function flushTrackpadMoveNow(forceRound) {
+      if (trackpadMoveRafId) {
+        cancelAnimationFrame(trackpadMoveRafId);
+        trackpadMoveRafId = 0;
+      }
+      const stepX = forceRound ? Math.round(relAccX) : Math.trunc(relAccX);
+      const stepY = forceRound ? Math.round(relAccY) : Math.trunc(relAccY);
+      if (forceRound) {
+        relAccX = 0;
+        relAccY = 0;
+      } else {
+        relAccX -= stepX;
+        relAccY -= stepY;
+      }
+      if (stepX !== 0 || stepY !== 0) {
+        lastMoveSendTs = performance.now();
+        sendFastInput({
+          type: 'mouse_move_rel',
+          monitorIndex: state.isStreaming ? state.remoteMonitorIndex : -1,
+          dx: stepX,
+          dy: stepY
+        });
+      }
+    }
+
+    function scheduleTrackpadMoveFlush(now) {
+      if (now - lastMoveSendTs >= 7) {
+        flushTrackpadMoveNow(false);
+        return;
+      }
+      if (!trackpadMoveRafId) {
+        trackpadMoveRafId = requestAnimationFrame(() => {
+          trackpadMoveRafId = 0;
+          flushTrackpadMoveNow(false);
+        });
+      }
     }
 
     function clearHoldTimer() {
@@ -6209,6 +6300,8 @@
           touchStartTs = performance.now();
           lastTouchSampleTs = touchStartTs;
           smoothedVelocity = 0;
+          cachedBoxW = Math.max(240, (state.isStreaming && screenImg.clientWidth) || viewport.clientWidth || 340);
+          cachedBoxH = Math.max(150, (state.isStreaming && screenImg.clientHeight) || viewport.clientHeight || 220);
           autoHoldTriggered = false;
           directDragActive = false;
           trackpadDragHoldActive = false;
@@ -6334,18 +6427,18 @@
           }
 
           if (effectiveMode === 'trackpad') {
-            // Sub-pixel relative hardware mouse movement with 1:1 isotropic X/Y speed & Precision Touchpad velocity curve
-            const boxW = Math.max(240, (state.isStreaming && screenImg.clientWidth) || viewport.clientWidth || 340);
-            const boxH = Math.max(150, (state.isStreaming && screenImg.clientHeight) || viewport.clientHeight || 220);
+            // Sub-pixel relative hardware mouse movement with 1:1 isotropic X/Y speed & continuous velocity curve
+            const boxW = cachedBoxW;
+            const boxH = cachedBoxH;
             const pcW = (state.streamBounds && state.streamBounds.width) || 1920;
             const pcH = (state.streamBounds && state.streamBounds.height) || 1080;
 
             const now = performance.now();
-            const dt = Math.max(4, Math.min(45, now - (lastTouchSampleTs || now - 12)));
+            const dt = Math.max(8, Math.min(42, now - (lastTouchSampleTs || now - 10)));
             lastTouchSampleTs = now;
             const stepHypot = Math.hypot(dx, dy);
             const instVelPxPerMs = stepHypot / dt;
-            const accel = computeSmartTrackpadGain(instVelPxPerMs, stepHypot);
+            const accel = computeSmartTrackpadGain(instVelPxPerMs, dt);
             const sens = (state.cursorSensitivity * accel) / Math.max(1, state.zoomScale * 0.75);
 
             // Use a uniform isotropic scale factor so horizontal and vertical speeds are strictly identical (including Fullscreen Touchpad)
@@ -6366,21 +6459,7 @@
               applyStageZoomAndPan();
             }
 
-            if (now - lastMoveSendTs >= 12) {
-              const stepX = Math.trunc(relAccX);
-              const stepY = Math.trunc(relAccY);
-              if (stepX !== 0 || stepY !== 0) {
-                relAccX -= stepX;
-                relAccY -= stepY;
-                lastMoveSendTs = now;
-                sendFastInput({
-                  type: 'mouse_move_rel',
-                  monitorIndex: state.isStreaming ? state.remoteMonitorIndex : -1,
-                  dx: stepX,
-                  dy: stepY
-                });
-              }
-            }
+            scheduleTrackpadMoveFlush(now);
           } else if (touchContactDown) {
             const norm = computeImageNormalizedCoords(t.clientX, t.clientY);
             state.cursorNormX = norm.x;
@@ -6438,20 +6517,7 @@
         }
 
         if (touchCount === 1 && padTouches.length === 0 && effectiveMode === 'trackpad') {
-          // Moves are sent at most every 12 ms; whatever accumulated since the last send would otherwise be lost and
-          // the PC cursor would end a little short of where the phone shows it
-          const stepX = Math.round(relAccX);
-          const stepY = Math.round(relAccY);
-          relAccX = 0;
-          relAccY = 0;
-          if (stepX !== 0 || stepY !== 0) {
-            sendFastInput({
-              type: 'mouse_move_rel',
-              monitorIndex: state.isStreaming ? state.remoteMonitorIndex : -1,
-              dx: stepX,
-              dy: stepY
-            });
-          }
+          flushTrackpadMoveNow(true);
         }
 
         if (touchCount === 1 && padTouches.length === 0) {
@@ -7061,7 +7127,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.7';
+    let currentAppVer = '2.19.8';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();

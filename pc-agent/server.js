@@ -2844,10 +2844,10 @@ const pendingAuthByClient = new Map();
 const STREAM_REQ_MAGIC = 0x33524254; // "TBR3"
 const STREAM_FRAME_MAGIC = 0x32464254; // "TBF2"
 const STREAM_ACK_OPCODE = 0xa1;
-const STREAM_MAX_INFLIGHT_JPEG = 2;
-const STREAM_MAX_INFLIGHT_VIDEO = 4;
+const STREAM_MAX_INFLIGHT_JPEG = 3;
+const STREAM_MAX_INFLIGHT_VIDEO = 5;
 const STREAM_MAX_INFLIGHT_VIDEO_CAP = 24;
-const STREAM_REFINE_DELAY_MS = 220;
+const STREAM_REFINE_DELAY_MS = 450;
 const STREAM_ACK_TIMEOUT_MS = 4000;
 // Motion levels. JPEG: scale (permille, multiple of 1/8 so 64px tiles map to whole pixels) + quality.
 // Video: H.264 target bitrate in kbps.
@@ -2860,12 +2860,12 @@ const STREAM_LEVELS = [
   { scale: 1000, quality: 76, kbps: 18000 },
   { scale: 1000, quality: 84, kbps: 26000 }
 ];
-// Video is sent at the monitor's native resolution up to videoMaxWidth (CRD keeps the resolution and only
-// trades bitrate); the level ladder above sets the bitrate and adapts it to the measured latency.
+// Video is sent at 1080p for balanced (so GPU H.264/AV1 encodes in <4 ms for rock-solid 60 FPS) while static
+// top-off refinement stays at native 1440p/4K (maxCanvasWidth).
 const STREAM_PROFILES = {
-  saver: { maxCanvasWidth: 1920, videoMaxWidth: 1920, startLevel: 2, maxLevel: 4, refineQuality: 84, maxFps: 30 },
-  balanced: { maxCanvasWidth: 2560, videoMaxWidth: 2560, startLevel: 4, maxLevel: 6, refineQuality: 90, maxFps: 60 },
-  hd: { maxCanvasWidth: 3840, videoMaxWidth: 3840, startLevel: 5, maxLevel: 6, refineQuality: 94, maxFps: 60 }
+  saver: { maxCanvasWidth: 1920, videoMaxWidth: 1600, startLevel: 2, maxLevel: 4, refineQuality: 84, maxFps: 30 },
+  balanced: { maxCanvasWidth: 2560, videoMaxWidth: 1920, startLevel: 4, maxLevel: 6, refineQuality: 90, maxFps: 60 },
+  hd: { maxCanvasWidth: 3840, videoMaxWidth: 2560, startLevel: 5, maxLevel: 6, refineQuality: 94, maxFps: 60 }
 };
 // Over the Cloudflare tunnel (mobile data) streams start lower and climb only as far as latency allows
 const STREAM_TUNNEL_START_LEVEL = 3;

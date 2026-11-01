@@ -172,8 +172,36 @@ public class MainActivity extends Activity {
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setSupportZoom(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
+                try {
+                    android.net.Uri uri = request != null ? request.getUrl() : null;
+                    if (uri != null && "localhost".equalsIgnoreCase(uri.getHost())) {
+                        String path = uri.getPath();
+                        if (path == null || path.isEmpty() || "/".equals(path)) {
+                            path = "/index.html";
+                        }
+                        String assetPath = path.startsWith("/") ? path.substring(1) : path;
+                        String mime = "application/octet-stream";
+                        String lower = assetPath.toLowerCase(Locale.US);
+                        if (lower.endsWith(".html")) mime = "text/html";
+                        else if (lower.endsWith(".js")) mime = "application/javascript";
+                        else if (lower.endsWith(".css")) mime = "text/css";
+                        else if (lower.endsWith(".json")) mime = "application/json";
+                        else if (lower.endsWith(".png")) mime = "image/png";
+                        else if (lower.endsWith(".svg")) mime = "image/svg+xml";
+                        else if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) mime = "image/jpeg";
+                        InputStream stream = getAssets().open(assetPath);
+                        return new android.webkit.WebResourceResponse(mime, "UTF-8", stream);
+                    }
+                } catch (Exception ignored) {
+                }
+                return super.shouldInterceptRequest(view, request);
+            }
+
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
@@ -210,7 +238,9 @@ public class MainActivity extends Activity {
         setupEdgeToEdgeInsetsHandling();
 
         setContentView(rootContainer);
-        webView.loadUrl("file:///android_asset/index.html");
+        // Served via http://localhost so Chromium marks window.isSecureContext === true
+        // and unlocks hardware WebCodecs (VideoDecoder / EncodedVideoChunk) while still allowing ws:// LAN sockets.
+        webView.loadUrl("http://localhost/index.html");
     }
 
     @Override
@@ -1301,6 +1331,35 @@ public class MainActivity extends Activity {
         public NativeBridge(MainActivity activity) {
             this.activity = activity;
             this.context = activity;
+        }
+
+        @JavascriptInterface
+        public String getSavedDevicesJson() {
+            try {
+                SharedPreferences prefs = context.getSharedPreferences(QUICK_PREFS_NAME, Context.MODE_PRIVATE);
+                String allRaw = prefs.getString(QUICK_PREFS_ALL_DEVICES_KEY, "");
+                if (allRaw != null && !allRaw.trim().isEmpty()) {
+                    return allRaw;
+                }
+                String singleRaw = prefs.getString(QUICK_PREFS_DEVICE_KEY, "");
+                if (singleRaw != null && !singleRaw.trim().isEmpty()) {
+                    JSONArray arr = new JSONArray();
+                    arr.put(new JSONObject(singleRaw));
+                    return arr.toString();
+                }
+            } catch (Exception ignored) {
+            }
+            return "[]";
+        }
+
+        @JavascriptInterface
+        public String getActiveDeviceJson() {
+            try {
+                SharedPreferences prefs = context.getSharedPreferences(QUICK_PREFS_NAME, Context.MODE_PRIVATE);
+                return prefs.getString(QUICK_PREFS_DEVICE_KEY, "");
+            } catch (Exception ignored) {
+            }
+            return "";
         }
 
         @JavascriptInterface

@@ -1,5 +1,5 @@
 #define MyAppName "Bridge"
-#define MyAppVersion "2.19.7"
+#define MyAppVersion "2.19.8"
 #define MyAppPublisher "Bridge"
 #define MyAppExeName "Bridge.exe"
 ; The product was called "TahaBLT Connect" before; the AppId is unchanged so this setup upgrades that install.

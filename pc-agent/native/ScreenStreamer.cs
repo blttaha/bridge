@@ -1212,26 +1212,32 @@ namespace TahaBLT
                 forceShape = true;
             }
 
+            private long lastDesktopSyncTick = 0;
+
             private CaptureResult CaptureOnce(int waitMs, bool needImage)
             {
-                string currentDesktop;
-                if (SyncThreadToInputDesktop(out currentDesktop) && !string.IsNullOrEmpty(currentDesktop))
+                long now = Environment.TickCount;
+                // When DXGI is active, desktop switches report ACCESS_LOST immediately; avoid 4 kernel syscalls per frame
+                if (!dxgi.IsReady || (uint)(now - lastDesktopSyncTick) > 1000)
                 {
-                    if (!string.Equals(currentDesktop, lastAttachedDesktopName, StringComparison.OrdinalIgnoreCase))
+                    lastDesktopSyncTick = now;
+                    string currentDesktop;
+                    if (SyncThreadToInputDesktop(out currentDesktop) && !string.IsNullOrEmpty(currentDesktop))
                     {
-                        lastAttachedDesktopName = currentDesktop;
-                        dxgi.Dispose();
-                        dxgiFailures = 0;
-                        nextDxgiRetryTick = 0;
-                        gdi.Dispose();
-                        gdiReady = false;
-                        forceShape = true;
-                        hasPrev = false;
-                        videoNeedsIdr = true;
+                        if (!string.Equals(currentDesktop, lastAttachedDesktopName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            lastAttachedDesktopName = currentDesktop;
+                            dxgi.Dispose();
+                            dxgiFailures = 0;
+                            nextDxgiRetryTick = 0;
+                            gdi.Dispose();
+                            gdiReady = false;
+                            forceShape = true;
+                            hasPrev = false;
+                            videoNeedsIdr = true;
+                        }
                     }
                 }
-
-                long now = Environment.TickCount;
                 if (monitorIndex >= 0 && !dxgi.IsReady && now >= nextDxgiRetryTick)
                 {
                     if (!dxgi.Initialize(srcX, srcY, srcW, srcH))
@@ -1432,8 +1438,9 @@ namespace TahaBLT
 
             private void ProduceFrame(StreamRequest r)
             {
-                // fps cap (75% of the frame interval: DXGI already paces to the display's vsync)
-                if (r.Mode == 0)
+                // When DXGI is active at 60 FPS, AcquireNextFrame already blocks until the display's VSync;
+                // pre-sleeping with Thread.Sleep(1) can overshoot the VSync edge and drop 60 FPS down to 30 FPS.
+                if (r.Mode == 0 && (!dxgi.IsReady || r.Fps < 55))
                 {
                     long minGap = 750 / Math.Max(10, r.Fps);
                     while (frameClock.ElapsedMilliseconds - lastFrameMs < minGap) Thread.Sleep(1);

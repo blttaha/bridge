@@ -4245,10 +4245,16 @@ namespace TahaBLT
         // keeps its predicted cursor until the PC has caught up instead of guessing with a timer (which snapped the
         // cursor back to stale positions on slow links).
         private static volatile int lastInputSeq;
+        private static int lastInputDesktopSyncTick = 0;
 
         private static object SendInputCommand(Dictionary<string, object> args)
         {
-            SyncThreadToInputDesktop();
+            int nowTick = Environment.TickCount;
+            if ((uint)(nowTick - lastInputDesktopSyncTick) > 1000)
+            {
+                lastInputDesktopSyncTick = nowTick;
+                SyncThreadToInputDesktop();
+            }
             object result = ApplyInputCommand(args);
             // Published only after the input is applied, so a frame carrying this number also carries its effect
             if (args.ContainsKey("seq"))
@@ -4261,29 +4267,8 @@ namespace TahaBLT
         private static readonly object mousePrioritySync = new object();
         private static int lastPhoneCursorX = int.MinValue;
         private static int lastPhoneCursorY = int.MinValue;
-        private static DateTime lastPhoneCursorMoveUtc = DateTime.MinValue;
-        private static DateTime lastPhysicalMouseMoveUtc = DateTime.MinValue;
-        private static bool isCursorClippedByApp = false;
-        private static System.Threading.Timer cursorClipReleaseTimer = null;
-
-        private static void ReleaseAppCursorClip()
-        {
-            lock (mousePrioritySync)
-            {
-                if (isCursorClippedByApp)
-                {
-                    ClipCursor(IntPtr.Zero);
-                    isCursorClippedByApp = false;
-                }
-                try
-                {
-                    Point p = Cursor.Position;
-                    lastPhoneCursorX = p.X;
-                    lastPhoneCursorY = p.Y;
-                }
-                catch { }
-            }
-        }
+        private static int lastPhoneMoveTick = 0;
+        private static int lastPhysicalMouseMoveTick = 0;
 
         private static bool CheckMousePriorityAllowsPhone(string priority, string inputType)
         {
@@ -4292,15 +4277,18 @@ namespace TahaBLT
 
             lock (mousePrioritySync)
             {
-                if (!isCursorClippedByApp)
+                int nowTick = Environment.TickCount;
+                uint msSincePhoneMove = (uint)(nowTick - lastPhoneMoveTick);
+                // Only inspect Cursor.Position for physical PC mouse movement when the phone hasn't just moved it
+                if (msSincePhoneMove > 45)
                 {
                     try
                     {
                         Point cur = Cursor.Position;
                         if (lastPhoneCursorX != int.MinValue &&
-                            (Math.Abs(cur.X - lastPhoneCursorX) > 2 || Math.Abs(cur.Y - lastPhoneCursorY) > 2))
+                            (Math.Abs(cur.X - lastPhoneCursorX) > 3 || Math.Abs(cur.Y - lastPhoneCursorY) > 3))
                         {
-                            lastPhysicalMouseMoveUtc = DateTime.UtcNow;
+                            lastPhysicalMouseMoveTick = nowTick;
                         }
                         lastPhoneCursorX = cur.X;
                         lastPhoneCursorY = cur.Y;
@@ -4308,10 +4296,19 @@ namespace TahaBLT
                     catch { }
                 }
 
-                if (priority == "pc_first" || priority == "active_lock")
+                if (priority == "pc_first")
                 {
-                    double msSincePhysical = (DateTime.UtcNow - lastPhysicalMouseMoveUtc).TotalMilliseconds;
-                    if (msSincePhysical >= 0 && msSincePhysical < 650)
+                    uint msSincePhysical = (uint)(nowTick - lastPhysicalMouseMoveTick);
+                    if (lastPhysicalMouseMoveTick != 0 && msSincePhysical < 600)
+                    {
+                        return false;
+                    }
+                }
+                else if (priority == "active_lock")
+                {
+                    uint msSincePhysical = (uint)(nowTick - lastPhysicalMouseMoveTick);
+                    // Only yield to physical mouse if the phone wasn't already actively steering
+                    if (lastPhysicalMouseMoveTick != 0 && msSincePhysical < 550 && msSincePhoneMove > 280)
                     {
                         return false;
                     }
@@ -4324,57 +4321,12 @@ namespace TahaBLT
         {
             lock (mousePrioritySync)
             {
-                if (isCursorClippedByApp)
-                {
-                    ClipCursor(IntPtr.Zero);
-                    isCursorClippedByApp = false;
-                }
-
                 SetCursorPos(targetX, targetY);
-                Rectangle vs = SystemInformation.VirtualScreen;
-                int vx = vs.X;
-                int vy = vs.Y;
-                int vw = Math.Max(1, vs.Width);
-                int vh = Math.Max(1, vs.Height);
-                int absX = (int)Math.Round(((double)(targetX - vx) * 65535.0) / Math.Max(1, vw - 1));
-                int absY = (int)Math.Round(((double)(targetY - vy) * 65535.0) / Math.Max(1, vh - 1));
-                mouse_event(MOUSEEVENTF_MOVE | 0x8000 | 0x4000, absX, absY, 0, IntPtr.Zero);
-
-                try
-                {
-                    Point p = Cursor.Position;
-                    lastPhoneCursorX = p.X;
-                    lastPhoneCursorY = p.Y;
-                }
-                catch
-                {
-                    lastPhoneCursorX = targetX;
-                    lastPhoneCursorY = targetY;
-                }
-                lastPhoneCursorMoveUtc = DateTime.UtcNow;
-
-                if (priority == "app_first" || priority == "active_lock")
-                {
-                    RECT clipRect = new RECT
-                    {
-                        Left = targetX,
-                        Top = targetY,
-                        Right = targetX + 1,
-                        Bottom = targetY + 1
-                    };
-                    if (ClipCursor(ref clipRect))
-                    {
-                        isCursorClippedByApp = true;
-                        if (cursorClipReleaseTimer == null)
-                        {
-                            cursorClipReleaseTimer = new System.Threading.Timer(_ => ReleaseAppCursorClip(), null, 500, System.Threading.Timeout.Infinite);
-                        }
-                        else
-                        {
-                            cursorClipReleaseTimer.Change(500, System.Threading.Timeout.Infinite);
-                        }
-                    }
-                }
+                // Relative (0,0) move notifies RawInput/DirectInput listeners without 65535 rounding jitter
+                mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, IntPtr.Zero);
+                lastPhoneCursorX = targetX;
+                lastPhoneCursorY = targetY;
+                lastPhoneMoveTick = Environment.TickCount;
             }
         }
 
@@ -4399,9 +4351,24 @@ namespace TahaBLT
             {
                 int dx = args.ContainsKey("dx") ? Convert.ToInt32(Math.Round(Convert.ToDouble(args["dx"]))) : 0;
                 int dy = args.ContainsKey("dy") ? Convert.ToInt32(Math.Round(Convert.ToDouble(args["dy"]))) : 0;
-                Point p = Cursor.Position;
-                int nextX = Math.Max(mon.x, Math.Min(mon.x + mon.width - 1, p.X + dx));
-                int nextY = Math.Max(mon.y, Math.Min(mon.y + mon.height - 1, p.Y + dy));
+                int baseX, baseY;
+                lock (mousePrioritySync)
+                {
+                    uint msSincePhone = (uint)(Environment.TickCount - lastPhoneMoveTick);
+                    if (lastPhoneCursorX != int.MinValue && (msSincePhone < 350 || mousePriority == "app_first"))
+                    {
+                        baseX = lastPhoneCursorX;
+                        baseY = lastPhoneCursorY;
+                    }
+                    else
+                    {
+                        Point p = Cursor.Position;
+                        baseX = p.X;
+                        baseY = p.Y;
+                    }
+                }
+                int nextX = Math.Max(mon.x, Math.Min(mon.x + mon.width - 1, baseX + dx));
+                int nextY = Math.Max(mon.y, Math.Min(mon.y + mon.height - 1, baseY + dy));
                 MoveCursorHardware(nextX, nextY, mousePriority);
                 double nx = Math.Max(0.0, Math.Min(1.0, (double)(nextX - mon.x) / Math.Max(1, mon.width)));
                 double ny = Math.Max(0.0, Math.Min(1.0, (double)(nextY - mon.y) / Math.Max(1, mon.height)));

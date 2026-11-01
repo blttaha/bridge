@@ -200,6 +200,10 @@ namespace TahaBLT
             private bool lastOutputKey;
             private readonly Stopwatch clock = Stopwatch.StartNew();
             private IntPtr variant = Marshal.AllocHGlobal(24);
+            private readonly IntPtr[] inSamples = new IntPtr[2];
+            private readonly IntPtr[] inBuffers = new IntPtr[2];
+            private uint inBufferSize;
+            private int inSlot;
 
             public int Width { get; private set; }
             public int Height { get; private set; }
@@ -391,6 +395,25 @@ namespace TahaBLT
                 SetApiUInt(MF.ApiMeanBitrate, (uint)kbps * 1000);
             }
 
+            private bool EnsureInputPool(uint size)
+            {
+                if (inBufferSize == size && inSamples[0] != IntPtr.Zero && inSamples[1] != IntPtr.Zero) return true;
+                for (int i = 0; i < 2; i++)
+                {
+                    ComRelease(ref inSamples[i]);
+                    ComRelease(ref inBuffers[i]);
+                }
+                inBufferSize = 0;
+                for (int i = 0; i < 2; i++)
+                {
+                    if (MF.MFCreateMemoryBuffer(size, out inBuffers[i]) != 0 || inBuffers[i] == IntPtr.Zero) return false;
+                    if (MF.MFCreateSample(out inSamples[i]) != 0 || inSamples[i] == IntPtr.Zero) return false;
+                    ComFn<MfSampleAddBufferDel>(inSamples[i], 42)(inSamples[i], inBuffers[i]);
+                }
+                inBufferSize = size;
+                return true;
+            }
+
             // Encodes one NV12 frame. Returns the Annex B access unit or null on failure.
             public byte[] Encode(IntPtr nv12, bool forceKey, out bool isKey)
             {
@@ -400,32 +423,26 @@ namespace TahaBLT
                 lastOutputKey = false;
                 int size = Width * Height * 3 / 2;
 
-                IntPtr buffer = IntPtr.Zero, sample = IntPtr.Zero;
-                try
-                {
-                    if (MF.MFCreateMemoryBuffer((uint)size, out buffer) != 0) return null;
-                    IntPtr data;
-                    uint maxLen, curLen;
-                    if (ComFn<MfBufferLockDel>(buffer, 3)(buffer, out data, out maxLen, out curLen) != 0) return null;
-                    unsafe { Buffer.MemoryCopy((void*)nv12, (void*)data, maxLen, size); }
-                    ComFn<MfBufferUnlockDel>(buffer, 4)(buffer);
-                    ComFn<MfBufferSetLengthDel>(buffer, 6)(buffer, (uint)size);
-                    if (MF.MFCreateSample(out sample) != 0) return null;
-                    ComFn<MfSampleAddBufferDel>(sample, 42)(sample, buffer);
-                    long ts = clock.ElapsedTicks * 10000000L / Stopwatch.Frequency;
-                    ComFn<MfSampleSetTimeDel>(sample, 36)(sample, ts);
-                    ComFn<MfSampleSetTimeDel>(sample, 38)(sample, 10000000L / Math.Max(1, Fps));
+                if (!EnsureInputPool((uint)size)) return null;
+                int slot = inSlot;
+                inSlot = (inSlot + 1) & 1;
+                IntPtr buffer = inBuffers[slot];
+                IntPtr sample = inSamples[slot];
 
-                    if (forceKey) SetApiUInt(MF.ApiForceKey, 1);
+                IntPtr data;
+                uint maxLen, curLen;
+                if (ComFn<MfBufferLockDel>(buffer, 3)(buffer, out data, out maxLen, out curLen) != 0) return null;
+                unsafe { Buffer.MemoryCopy((void*)nv12, (void*)data, maxLen, size); }
+                ComFn<MfBufferUnlockDel>(buffer, 4)(buffer);
+                ComFn<MfBufferSetLengthDel>(buffer, 6)(buffer, (uint)size);
+                long ts = clock.ElapsedTicks * 10000000L / Stopwatch.Frequency;
+                ComFn<MfSampleSetTimeDel>(sample, 36)(sample, ts);
+                ComFn<MfSampleSetTimeDel>(sample, 38)(sample, 10000000L / Math.Max(1, Fps));
 
-                    bool ok = isAsync ? EncodeAsync(sample) : EncodeSync(sample);
-                    if (!ok) return null;
-                }
-                finally
-                {
-                    if (sample != IntPtr.Zero) Marshal.Release(sample);
-                    if (buffer != IntPtr.Zero) Marshal.Release(buffer);
-                }
+                if (forceKey) SetApiUInt(MF.ApiForceKey, 1);
+
+                bool ok = isAsync ? EncodeAsync(sample) : EncodeSync(sample);
+                if (!ok) return null;
 
                 if (outputs.Count == 0) return null;
                 isKey = lastOutputKey;
@@ -566,6 +583,12 @@ namespace TahaBLT
                 {
                     try { ComFn<MftProcessMessageDel>(transform, 23)(transform, 0x10000001 /* END_STREAMING */, IntPtr.Zero); } catch { }
                 }
+                for (int i = 0; i < 2; i++)
+                {
+                    ComRelease(ref inSamples[i]);
+                    ComRelease(ref inBuffers[i]);
+                }
+                inBufferSize = 0;
                 ComRelease(ref events);
                 ComRelease(ref codecApi);
                 ComRelease(ref transform);
