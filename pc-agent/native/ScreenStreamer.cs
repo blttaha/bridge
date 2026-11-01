@@ -1640,6 +1640,15 @@ namespace TahaBLT
                             av1Failed = true; // no AV1 encoder on this GPU: H.264 for the rest of the session
                             ready = video.Initialize(vw, vh, r.Fps, r.VideoKbps, false);
                         }
+                        if (!ready && vw > 1920)
+                        {
+                            // Fallback for software MFT encoders capped at 1920x1088
+                            r.VideoMaxWidth = 1920;
+                            double vsFallback = canvasW > 1920 ? 1920.0 / canvasW : 1.0;
+                            vw = Math.Max(64, (int)Math.Round(canvasW * vsFallback)) & ~1;
+                            vh = Math.Max(64, (int)Math.Round(canvasH * vsFallback)) & ~1;
+                            ready = video.Initialize(vw, vh, r.Fps, r.VideoKbps, false);
+                        }
                         if (!ready) return null;
                         videoNeedsIdr = true;
                     }

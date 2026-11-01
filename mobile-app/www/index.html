@@ -230,7 +230,7 @@
 
                 <div class="setting-action-row">
                   <div class="setting-meta">
-                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.8</span>
+                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.9</span>
                     <span class="setting-desc" id="updateStatusCaption">GitHub (blttaha/bridge) üzerinden mobil ve masaüstü sürümlerini denetleyin</span>
                   </div>
                   <button type="button" class="btn-compact btn-secondary" id="btnCheckUpdatesSetting">Denetle</button>
@@ -497,6 +497,12 @@
                 <button type="button" class="btn-secondary btn-compact stream-toggle-pill" id="toggleStreamHeaderBtn" title="Canlı Ekran Aktarımını Başlat / Durdur">
                   Ekranı Aç
                 </button>
+                <button type="button" class="icon-btn icon-btn-sm" id="remoteLiveKbdBtn" title="Canlı Klavye Aç" aria-label="Canlı Klavye Aç">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="4.5" width="16" height="11" rx="1.5" />
+                    <path d="M5 8h1.5M8.5 8H10M12 8h1.5M5 11h1.5M13.5 11H15M7 13.2h6" stroke-linecap="round" />
+                  </svg>
+                </button>
                 <div class="remote-mode-toggle" id="remoteModeToggleGroup" title="Kontrol Modu">
                   <button type="button" class="icon-btn icon-btn-sm mode-icon-btn active" id="modeTrackpadBtn" title="Fare İmleci (Trackpad) Modu" aria-label="Fare İmleci Modu">
                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -509,12 +515,6 @@
                     </svg>
                   </button>
                 </div>
-                <button type="button" class="icon-btn icon-btn-sm" id="remoteLiveKbdBtn" title="Canlı Klavye Aç" aria-label="Canlı Klavye Aç">
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <rect x="2" y="4.5" width="16" height="11" rx="1.5" />
-                    <path d="M5 8h1.5M8.5 8H10M12 8h1.5M5 11h1.5M13.5 11H15M7 13.2h6" stroke-linecap="round" />
-                  </svg>
-                </button>
                 <button type="button" class="icon-btn icon-btn-sm" id="remoteFullscreenBtn" title="Tam Ekran Masaüstü" aria-label="Tam Ekran Masaüstü">
                   <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M3.5 7.5V3.5h4M16.5 7.5V3.5h-4M3.5 12.5v4h4M16.5 12.5v4h-4" stroke-linecap="round" stroke-linejoin="round" />
@@ -2013,7 +2013,7 @@
         <div class="modal-header">
           <div>
             <h2 class="modal-title" id="macroModalTitle">Makro Oluştur</h2>
-            <p class="modal-subtitle">Uygulamadan tek dokunuşla çalıştırılacak tuş, sistem ve metin zinciri</p>
+            <p class="modal-subtitle">Tek veya çoklu kombinasyon, basılı tutma ve tekrarlama ayarları</p>
           </div>
           <button type="button" class="icon-btn" id="closeMacroModalBtn" aria-label="Kapat">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -2022,71 +2022,133 @@
           </button>
         </div>
 
-        <div class="modal-body">
+        <div class="modal-body macro-studio-body">
+          <!-- 1. Makro Adı -->
           <div class="form-group">
             <label class="form-label" for="macroNameInput">Makro Adı</label>
             <input
               type="text"
               id="macroNameInput"
               class="input-field"
-              placeholder="Örn: Yayın Başlat / Kod Derle / Gece Modu"
+              placeholder="Boş bırakırsanız ilk adımdan otomatik adlandırılır"
               autocomplete="off"
             />
           </div>
 
-          <div class="rule-builder-card">
-            <div class="rule-builder-header">
-              <span class="sub-panel-title">1. Klavye veya Sistem Tuşu Ekle</span>
+          <!-- 2. Çalışma ve Tekrarlama Biçimi -->
+          <div class="macro-studio-section">
+            <div class="macro-section-head">
+              <span class="sub-panel-title">Çalışma Biçimi</span>
+              <span class="mono-caption" id="macroRepeatHintText">Dokununca 1 kez çalışır</span>
+            </div>
+            <div class="macro-seg-grid" id="macroRepeatModePills">
+              <button type="button" class="macro-seg-btn active" data-repeat-mode="once">Tek Sefer</button>
+              <button type="button" class="macro-seg-btn" data-repeat-mode="toggle">Kapatılana Kadar</button>
+              <button type="button" class="macro-seg-btn" data-repeat-mode="duration">Süreli (sn)</button>
+              <button type="button" class="macro-seg-btn" data-repeat-mode="count">Tekrar Sayısı</button>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Modifikasyon Tuşları (Çoklu Seçilebilir)</label>
-              <div class="macro-mod-row" id="macroModPills">
-                <button type="button" class="macro-mod-pill" data-mod="CTRL">CTRL</button>
-                <button type="button" class="macro-mod-pill" data-mod="SHIFT">SHIFT</button>
-                <button type="button" class="macro-mod-pill" data-mod="ALT">ALT</button>
-                <button type="button" class="macro-mod-pill" data-mod="WIN">WIN</button>
+            <div class="macro-repeat-config hidden" id="macroRepeatConfigBox">
+              <div class="macro-repeat-subrow hidden" id="macroDurationConfigRow">
+                <div class="macro-inline-head">
+                  <label class="form-label" for="macroRepeatDurationInput">Çalışma Süresi (Saniye)</label>
+                  <div class="macro-mini-chips" id="macroDurationPresetChips">
+                    <button type="button" class="macro-mini-chip" data-dur-sec="3">3 sn</button>
+                    <button type="button" class="macro-mini-chip active" data-dur-sec="5">5 sn</button>
+                    <button type="button" class="macro-mini-chip" data-dur-sec="10">10 sn</button>
+                    <button type="button" class="macro-mini-chip" data-dur-sec="30">30 sn</button>
+                    <button type="button" class="macro-mini-chip" data-dur-sec="60">60 sn</button>
+                  </div>
+                </div>
+                <input type="number" class="input-field" id="macroRepeatDurationInput" min="1" max="86400" step="1" value="5" />
+              </div>
+
+              <div class="macro-repeat-subrow hidden" id="macroCountConfigRow">
+                <div class="macro-inline-head">
+                  <label class="form-label" for="macroRepeatCountInput">Tekrar Sayısı (Adet)</label>
+                  <div class="macro-mini-chips" id="macroCountPresetChips">
+                    <button type="button" class="macro-mini-chip" data-rep-count="2">2x</button>
+                    <button type="button" class="macro-mini-chip active" data-rep-count="5">5x</button>
+                    <button type="button" class="macro-mini-chip" data-rep-count="10">10x</button>
+                    <button type="button" class="macro-mini-chip" data-rep-count="25">25x</button>
+                    <button type="button" class="macro-mini-chip" data-rep-count="50">50x</button>
+                  </div>
+                </div>
+                <input type="number" class="input-field" id="macroRepeatCountInput" min="1" max="10000" step="1" value="5" />
+              </div>
+
+              <div class="macro-repeat-subrow" id="macroIntervalConfigRow">
+                <div class="macro-inline-head">
+                  <label class="form-label" for="macroRepeatIntervalInput">Tekrar Aralığı (ms)</label>
+                  <div class="macro-mini-chips" id="macroIntervalPresetChips">
+                    <button type="button" class="macro-mini-chip" data-int-ms="50">50 ms</button>
+                    <button type="button" class="macro-mini-chip active" data-int-ms="120">120 ms</button>
+                    <button type="button" class="macro-mini-chip" data-int-ms="250">250 ms</button>
+                    <button type="button" class="macro-mini-chip" data-int-ms="500">500 ms</button>
+                    <button type="button" class="macro-mini-chip" data-int-ms="1000">1 sn</button>
+                  </div>
+                </div>
+                <input type="number" class="input-field" id="macroRepeatIntervalInput" min="20" max="60000" step="10" value="120" />
               </div>
             </div>
+          </div>
 
-            <div class="form-group">
-              <label class="form-label" for="macroBaseKeySelect">Tuş Seçimi</label>
-              <div class="fs-path-bar">
+          <!-- 3. Adım Oluşturucu (Sekmeli & Ultra Sade) -->
+          <div class="macro-studio-section">
+            <div class="macro-section-head">
+              <span class="sub-panel-title">Adım Ekle</span>
+              <span class="mono-caption">Tek veya birden fazla adım dizin</span>
+            </div>
+
+            <div class="macro-step-tabs" id="macroStepTypeTabs">
+              <button type="button" class="macro-step-tab active" data-step-tab="key">Tuş / Kısayol</button>
+              <button type="button" class="macro-step-tab" data-step-tab="system">Sistem İşlevi</button>
+              <button type="button" class="macro-step-tab" data-step-tab="text">Metin</button>
+              <button type="button" class="macro-step-tab" data-step-tab="delay">Bekleme</button>
+            </div>
+
+            <!-- TAB 1: TUŞ / KISAYOL / BASILI TUTMA -->
+            <div class="macro-tab-pane" id="macroTabPaneKey">
+              <div class="form-group">
+                <label class="form-label">Yardımcı Tuşlar (İsteğe Bağlı Çoklu Seçim)</label>
+                <div class="macro-mod-row" id="macroModPills">
+                  <button type="button" class="macro-mod-pill" data-mod="CTRL">CTRL</button>
+                  <button type="button" class="macro-mod-pill" data-mod="SHIFT">SHIFT</button>
+                  <button type="button" class="macro-mod-pill" data-mod="ALT">ALT</button>
+                  <button type="button" class="macro-mod-pill" data-mod="WIN">WIN</button>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="macroBaseKeySelect">Ana Tuş veya Fare Tıklaması</label>
                 <select class="input-field" id="macroBaseKeySelect">
-                  <option value="">-- Modifikasyon veya Tuş Seçin --</option>
-                  <optgroup label="Sistem, Ses ve Medya Tuşları">
-                    <option value="VOLUME_UP">SES ARTIR (VOLUME UP)</option>
-                    <option value="VOLUME_DOWN">SES AZALT (VOLUME DOWN)</option>
-                    <option value="VOLUME_MUTE">SESİ SUSTUR / AÇ (MUTE)</option>
-                    <option value="MEDIA_PLAY_PAUSE">MEDYA OYNAT / DURAKLAT</option>
-                    <option value="MEDIA_NEXT">SONRAKİ PARÇA</option>
-                    <option value="MEDIA_PREV">ÖNCEKİ PARÇA</option>
-                    <option value="PRINTSCREEN">EKRAN GÖRÜNTÜSÜ (PRINT SCREEN)</option>
-                    <option value="INSERT">INSERT</option>
-                    <option value="CAPSLOCK">CAPS LOCK</option>
-                    <option value="NUMLOCK">NUM LOCK</option>
-                    <option value="PAUSE">PAUSE / BREAK</option>
+                  <option value="">-- Ana Tuş Seçin (Veya Sadece Üstten Modifikasyon) --</option>
+                  <optgroup label="Fare (Mouse) Tıklamaları">
+                    <option value="MOUSE_LEFT">SOL TIK (MOUSE LEFT)</option>
+                    <option value="MOUSE_RIGHT">SAĞ TIK (MOUSE RIGHT)</option>
+                    <option value="MOUSE_MIDDLE">ORTA TIK (MOUSE MIDDLE)</option>
+                    <option value="MOUSE_DOUBLE">ÇİFT SOL TIK (DOUBLE CLICK)</option>
                   </optgroup>
                   <optgroup label="Sık Kullanılan Tuşlar">
-                    <option value="ENTER">ENTER</option>
                     <option value="SPACE">BOŞLUK (SPACE)</option>
-                    <option value="TAB">TAB</option>
+                    <option value="ENTER">ENTER</option>
                     <option value="ESC">ESC</option>
+                    <option value="TAB">TAB</option>
                     <option value="BACKSPACE">BACKSPACE (SİL)</option>
                     <option value="DELETE">DELETE</option>
                   </optgroup>
                   <optgroup label="Harfler (A - Z)">
-                    <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
-                    <option value="E">E</option><option value="F">F</option><option value="G">G</option><option value="H">H</option>
-                    <option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="L">L</option>
-                    <option value="M">M</option><option value="N">N</option><option value="O">O</option><option value="P">P</option>
-                    <option value="Q">Q</option><option value="R">R</option><option value="S">S</option><option value="T">T</option>
-                    <option value="U">U</option><option value="V">V</option><option value="W">W</option><option value="X">X</option>
+                    <option value="W">W</option><option value="A">A</option><option value="S">S</option><option value="D">D</option>
+                    <option value="B">B</option><option value="C">C</option><option value="E">E</option><option value="F">F</option>
+                    <option value="G">G</option><option value="H">H</option><option value="I">I</option><option value="J">J</option>
+                    <option value="K">K</option><option value="L">L</option><option value="M">M</option><option value="N">N</option>
+                    <option value="O">O</option><option value="P">P</option><option value="Q">Q</option><option value="R">R</option>
+                    <option value="T">T</option><option value="U">U</option><option value="V">V</option><option value="X">X</option>
                     <option value="Y">Y</option><option value="Z">Z</option>
                   </optgroup>
                   <optgroup label="Rakamlar (0 - 9)">
-                    <option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
-                    <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option>
+                    <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+                    <option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="0">0</option>
                   </optgroup>
                   <optgroup label="Fonksiyon Tuşları (F1 - F12)">
                     <option value="F1">F1</option><option value="F2">F2</option><option value="F3">F3</option><option value="F4">F4</option>
@@ -2103,37 +2165,67 @@
                     <option value="PGUP">PAGE UP</option>
                     <option value="PGDN">PAGE DOWN</option>
                   </optgroup>
+                  <optgroup label="Sistem, Ses ve Medya Tuşları">
+                    <option value="VOLUME_UP">SES ARTIR (VOLUME UP)</option>
+                    <option value="VOLUME_DOWN">SES AZALT (VOLUME DOWN)</option>
+                    <option value="VOLUME_MUTE">SESİ SUSTUR / AÇ (MUTE)</option>
+                    <option value="MEDIA_PLAY_PAUSE">MEDYA OYNAT / DURAKLAT</option>
+                    <option value="MEDIA_NEXT">SONRAKİ PARÇA</option>
+                    <option value="MEDIA_PREV">ÖNCEKİ PARÇA</option>
+                    <option value="PRINTSCREEN">EKRAN GÖRÜNTÜSÜ (PRINT SCREEN)</option>
+                    <option value="INSERT">INSERT</option>
+                    <option value="CAPSLOCK">CAPS LOCK</option>
+                    <option value="NUMLOCK">NUM LOCK</option>
+                    <option value="PAUSE">PAUSE / BREAK</option>
+                  </optgroup>
                 </select>
-                <button type="button" class="btn-primary btn-compact" id="addMacroKeyStepBtn">+ Tuş Ekle</button>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Tuş Basma Biçimi</label>
+                <div class="macro-seg-grid macro-seg-grid-3" id="macroKeyActionPills">
+                  <button type="button" class="macro-seg-btn active" data-key-action="tap">Anlık Bas-Bırak</button>
+                  <button type="button" class="macro-seg-btn" data-key-action="hold">Süreli Basılı Tut</button>
+                  <button type="button" class="macro-seg-btn" data-key-action="hold_until_stop">Kapatılana Dek Tut</button>
+                </div>
+              </div>
+
+              <div class="macro-repeat-subrow hidden" id="macroKeyHoldDurationRow">
+                <div class="macro-inline-head">
+                  <label class="form-label" for="macroKeyHoldSecInput">Basılı Tutma Süresi (Saniye)</label>
+                  <div class="macro-mini-chips" id="macroKeyHoldPresetChips">
+                    <button type="button" class="macro-mini-chip" data-hold-sec="0.5">0.5 sn</button>
+                    <button type="button" class="macro-mini-chip active" data-hold-sec="1">1 sn</button>
+                    <button type="button" class="macro-mini-chip" data-hold-sec="3">3 sn</button>
+                    <button type="button" class="macro-mini-chip" data-hold-sec="5">5 sn</button>
+                    <button type="button" class="macro-mini-chip" data-hold-sec="10">10 sn</button>
+                  </div>
+                </div>
+                <input type="number" class="input-field" id="macroKeyHoldSecInput" min="0.1" max="3600" step="0.5" value="1" />
+              </div>
+
+              <button type="button" class="btn-primary macro-add-step-wide" id="addMacroKeyStepBtn">+ Tuş Adımını Listeye Ekle</button>
+
+              <div class="form-group" style="margin-top: 12px; margin-bottom: 0;">
+                <label class="form-label">Hazır Kısayollar (Dokununca Ekler)</label>
+                <div class="macro-preset-chips" id="macroPresetChips">
+                  <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+C">CTRL+C</button>
+                  <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+V">CTRL+V</button>
+                  <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+S">CTRL+S</button>
+                  <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+Z">CTRL+Z</button>
+                  <button type="button" class="macro-chip-btn" data-macro-preset="ALT+TAB">ALT+TAB</button>
+                  <button type="button" class="macro-chip-btn" data-macro-preset="WIN+D">MASAÜSTÜ</button>
+                  <button type="button" class="macro-chip-btn" data-macro-preset="WIN+SHIFT+S">EKRAN ALINTI</button>
+                  <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+SHIFT+ESC">GÖREV YÖN.</button>
+                  <button type="button" class="macro-chip-btn" data-macro-preset="ALT+F4">ALT+F4</button>
+                </div>
               </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Hızlı Sistem Kısayolları (Tek Dokunuşla Ekle)</label>
-              <div class="macro-preset-chips" id="macroPresetChips">
-                <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+C">CTRL+C</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+V">CTRL+V</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+S">CTRL+S</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+Z">CTRL+Z</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="ALT+TAB">ALT+TAB</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+D">MASAÜSTÜ</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+E">DOSYA GEZGİNİ</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+I">AYARLAR</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+L">KİLİTLE</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+SHIFT+S">EKRAN ALINTI</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+SHIFT+ESC">GÖREV YÖN.</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="ALT+F4">ALT+F4</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="rule-builder-card">
-            <div class="rule-builder-header">
-              <span class="sub-panel-title">2. Sistem, Medya veya Bağlantı İşlemi Ekle</span>
-            </div>
-            <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label" for="macroSystemActionSelect">Uygulama İçi Sistem Kalemi</label>
-              <div class="fs-path-bar">
+            <!-- TAB 2: SİSTEM İŞLEVİ -->
+            <div class="macro-tab-pane hidden" id="macroTabPaneSystem">
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label class="form-label" for="macroSystemActionSelect">Uygulama İçi Sistem İşlemi</label>
                 <select class="input-field" id="macroSystemActionSelect">
                   <optgroup label="Ekran ve Masaüstü">
                     <option value="monitors-off">Tüm Ekranları Kapat (Karart)</option>
@@ -2176,35 +2268,47 @@
                     <option value="flush-dns">DNS Önbelleğini Temizle</option>
                   </optgroup>
                 </select>
-                <button type="button" class="btn-primary btn-compact" id="addMacroSystemStepBtn">+ İşlem Ekle</button>
               </div>
+              <button type="button" class="btn-primary macro-add-step-wide" id="addMacroSystemStepBtn">+ Sistem İşlemini Ekle</button>
+            </div>
+
+            <!-- TAB 3: METİN YAZDIRMA -->
+            <div class="macro-tab-pane hidden" id="macroTabPaneText">
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label class="form-label" for="macroTextStepInput">Otomatik Yazılacak Metin</label>
+                <input type="text" class="input-field" id="macroTextStepInput" placeholder="Yazılacak metin, şifre veya komut..." autocomplete="off" />
+              </div>
+              <button type="button" class="btn-primary macro-add-step-wide" id="addMacroTextStepBtn">+ Metin Adımını Ekle</button>
+            </div>
+
+            <!-- TAB 4: BEKLEME (GECİKME) -->
+            <div class="macro-tab-pane hidden" id="macroTabPaneDelay">
+              <div class="macro-inline-head">
+                <label class="form-label" for="macroDelayStepInput">Adımlar Arası Bekleme (Milisaniye)</label>
+                <div class="macro-mini-chips" id="macroDelayPresetChips">
+                  <button type="button" class="macro-mini-chip" data-delay-ms="100">100 ms</button>
+                  <button type="button" class="macro-mini-chip active" data-delay-ms="250">250 ms</button>
+                  <button type="button" class="macro-mini-chip" data-delay-ms="500">500 ms</button>
+                  <button type="button" class="macro-mini-chip" data-delay-ms="1000">1 sn</button>
+                  <button type="button" class="macro-mini-chip" data-delay-ms="3000">3 sn</button>
+                  <button type="button" class="macro-mini-chip" data-delay-ms="5000">5 sn</button>
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 10px;">
+                <input type="number" class="input-field" id="macroDelayStepInput" min="10" max="300000" step="50" value="250" />
+              </div>
+              <button type="button" class="btn-primary macro-add-step-wide" id="addMacroDelayStepBtn">+ Bekleme Adımını Ekle</button>
             </div>
           </div>
 
-          <div class="rule-builder-card">
-            <div class="rule-builder-header">
-              <span class="sub-panel-title">3. Metin Yazdırma veya Bekleme (ms) Ekle</span>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="macroTextStepInput">Otomatik Yazılacak Metin</label>
-              <div class="fs-path-bar">
-                <input type="text" class="input-field" id="macroTextStepInput" placeholder="Yazılacak metin veya komut..." autocomplete="off" />
-                <button type="button" class="btn-secondary btn-compact" id="addMacroTextStepBtn">+ Metin</button>
-              </div>
-            </div>
-            <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label" for="macroDelayStepInput">Adımlar Arası Bekleme Süresi (Milisaniye)</label>
-              <div class="fs-path-bar">
-                <input type="number" class="input-field" id="macroDelayStepInput" min="20" max="30000" step="50" value="250" />
-                <button type="button" class="btn-secondary btn-compact" id="addMacroDelayStepBtn">+ Gecikme</button>
-              </div>
-            </div>
-          </div>
-
+          <!-- 4. Makro Adım Sırası -->
           <div class="composer-blueprint-box">
             <div class="blueprint-header">
-              <span class="sub-panel-title">Makro Adım Sırası</span>
-              <span class="mono-caption" id="macroStepsCountBadge">0 Adım</span>
+              <span class="sub-panel-title">Makro Adımları</span>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="mono-caption" id="macroStepsCountBadge">0 Adım</span>
+                <button type="button" class="btn-ghost btn-xs hidden" id="clearMacroStepsBtn">Temizle</button>
+              </div>
             </div>
             <div class="macro-steps-list" id="macroStepsListContainer"></div>
           </div>

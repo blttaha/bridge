@@ -1470,6 +1470,9 @@
       } else if (msg.type === 'macros_updated') {
         state.macros = Array.isArray(msg.payload) ? msg.payload : [];
         renderMacrosList();
+      } else if (msg.type === 'macros_runtime_updated' && msg.payload) {
+        state.runningMacroIds = Array.isArray(msg.payload.runningMacroIds) ? msg.payload.runningMacroIds : [];
+        renderMacrosList();
       } else if (msg.type === 'quick_actions_updated') {
         state.quickActions = Array.isArray(msg.payload) ? msg.payload : [];
         renderQuickActionsList();
@@ -2497,7 +2500,26 @@
     if (step.type === 'system_action') {
       return `SİSTEM: ${String(step.label || step.value || '')}`;
     }
-    return String(step.value || '').toUpperCase();
+    const keyVal = String(step.value || '').toUpperCase();
+    const act = String(step.action || 'tap').toLowerCase();
+    const holdMs = Number(step.holdMs || 0);
+    if (act === 'hold_until_stop') {
+      return `${keyVal} (Basılı Tut)`;
+    }
+    if (act === 'hold' || holdMs > 0) {
+      const secTxt = ((holdMs || 1000) / 1000).toFixed(holdMs % 1000 === 0 ? 0 : 1);
+      return `${keyVal} (${secTxt}sn Tut)`;
+    }
+    return keyVal;
+  }
+
+  function formatMacroRepeatSummary(m) {
+    if (!m) return '';
+    const mode = String(m.repeatMode || 'once').toLowerCase();
+    if (mode === 'toggle') return 'Kapatılana Kadar';
+    if (mode === 'duration') return `${Number(m.repeatDurationSec || 5)} sn Süreli`;
+    if (mode === 'count') return `${Number(m.repeatCount || 5)}x Tekrar`;
+    return '';
   }
 
   function renderMacrosList() {
@@ -2506,6 +2528,7 @@
     if (!emptyEl || !listEl) return;
 
     const list = Array.isArray(state.macros) ? state.macros : [];
+    const runningSet = new Set(Array.isArray(state.runningMacroIds) ? state.runningMacroIds : []);
     if (!list.length) {
       emptyEl.classList.remove('hidden');
       listEl.classList.add('hidden');
@@ -2518,6 +2541,7 @@
 
     listEl.innerHTML = list
       .map((m) => {
+        const isRunning = runningSet.has(m.id);
         const steps = Array.isArray(m.steps) ? m.steps : [];
         const badges = steps
           .slice(0, 4)
@@ -2525,8 +2549,10 @@
           .filter(Boolean)
           .join(' → ');
         const moreTxt = steps.length > 4 ? ` +${steps.length - 4}` : '';
+        const repeatTag = formatMacroRepeatSummary(m);
+        const seqSummary = (badges || `${steps.length} adım`) + moreTxt + (repeatTag ? ` · ${repeatTag}` : '');
         return `
-          <div class="macro-card" data-macro-id="${escapeHtml(m.id)}">
+          <div class="macro-card ${isRunning ? 'is-running' : ''}" data-macro-id="${escapeHtml(m.id)}">
             <div class="macro-card-left" data-run-macro="${escapeHtml(m.id)}">
               <div class="macro-key-icon">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
@@ -2536,7 +2562,7 @@
               </div>
               <div class="macro-card-info">
                 <span class="macro-card-title">${escapeHtml(m.name || 'Makro')}</span>
-                <span class="macro-card-seq">${escapeHtml((badges || `${steps.length} adım`) + moreTxt)}</span>
+                <span class="macro-card-seq">${escapeHtml(isRunning ? `Çalışıyor · Durdurmak için dokunun (${seqSummary})` : seqSummary)}</span>
               </div>
             </div>
             <div class="macro-card-actions">
@@ -2553,16 +2579,63 @@
               </button>
               <button
                 type="button"
-                class="btn-primary btn-compact"
+                class="${isRunning ? 'btn-danger' : 'btn-primary'} btn-compact"
                 data-run-macro="${escapeHtml(m.id)}"
               >
-                Çalıştır
+                ${isRunning ? 'Durdur' : 'Çalıştır'}
               </button>
             </div>
           </div>
         `;
       })
       .join('');
+  }
+
+  function syncMacroComposerUiState() {
+    const mode = state.macroRepeatMode || 'once';
+    const hintEl = document.getElementById('macroRepeatHintText');
+    if (hintEl) {
+      if (mode === 'toggle') hintEl.textContent = 'Dokununca başlar, tekrar dokununca durur';
+      else if (mode === 'duration') hintEl.textContent = 'Belirttiğiniz süre boyunca tekrarlar';
+      else if (mode === 'count') hintEl.textContent = 'Belirttiğiniz adet kadar tekrarlar';
+      else hintEl.textContent = 'Dokununca 1 kez çalışır';
+    }
+
+    document.querySelectorAll('#macroRepeatModePills [data-repeat-mode]').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-repeat-mode') === mode);
+    });
+
+    const cfgBox = document.getElementById('macroRepeatConfigBox');
+    const durRow = document.getElementById('macroDurationConfigRow');
+    const cntRow = document.getElementById('macroCountConfigRow');
+    const intRow = document.getElementById('macroIntervalConfigRow');
+
+    if (cfgBox) cfgBox.classList.toggle('hidden', mode === 'once');
+    if (durRow) durRow.classList.toggle('hidden', mode !== 'duration');
+    if (cntRow) cntRow.classList.toggle('hidden', mode !== 'count');
+    if (intRow) intRow.classList.toggle('hidden', mode === 'once');
+
+    const activeTab = state.macroStepTab || 'key';
+    document.querySelectorAll('#macroStepTypeTabs [data-step-tab]').forEach((t) => {
+      t.classList.toggle('active', t.getAttribute('data-step-tab') === activeTab);
+    });
+    const paneMap = {
+      key: 'macroTabPaneKey',
+      system: 'macroTabPaneSystem',
+      text: 'macroTabPaneText',
+      delay: 'macroTabPaneDelay'
+    };
+    Object.entries(paneMap).forEach(([k, id]) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('hidden', k !== activeTab);
+    });
+
+    const keyAct = state.macroKeyAction || 'tap';
+    document.querySelectorAll('#macroKeyActionPills [data-key-action]').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-key-action') === keyAct);
+    });
+    const holdRow = document.getElementById('macroKeyHoldDurationRow');
+    if (holdRow) holdRow.classList.toggle('hidden', keyAct !== 'hold');
   }
 
   function openMacroComposer(existingMacro) {
@@ -2572,6 +2645,9 @@
         ? JSON.parse(JSON.stringify(existingMacro.steps))
         : [];
     state.macroActiveMods = [];
+    state.macroRepeatMode = (existingMacro && existingMacro.repeatMode) || 'once';
+    state.macroStepTab = 'key';
+    state.macroKeyAction = 'tap';
 
     const titleEl = document.getElementById('macroModalTitle');
     if (titleEl) {
@@ -2579,6 +2655,18 @@
     }
     const nameInput = document.getElementById('macroNameInput');
     if (nameInput) nameInput.value = existingMacro ? existingMacro.name || '' : '';
+
+    const durIn = document.getElementById('macroRepeatDurationInput');
+    if (durIn) durIn.value = existingMacro && existingMacro.repeatDurationSec ? existingMacro.repeatDurationSec : 5;
+
+    const cntIn = document.getElementById('macroRepeatCountInput');
+    if (cntIn) cntIn.value = existingMacro && existingMacro.repeatCount ? existingMacro.repeatCount : 5;
+
+    const intIn = document.getElementById('macroRepeatIntervalInput');
+    if (intIn) intIn.value = existingMacro && existingMacro.repeatIntervalMs ? existingMacro.repeatIntervalMs : 120;
+
+    const holdIn = document.getElementById('macroKeyHoldSecInput');
+    if (holdIn) holdIn.value = 1;
 
     const keyInput = document.getElementById('macroBaseKeySelect') || document.getElementById('macroCustomKeyInput');
     if (keyInput) keyInput.value = '';
@@ -2590,23 +2678,28 @@
     if (delBtn) delBtn.classList.toggle('hidden', !existingMacro);
 
     document.querySelectorAll('#macroModPills .macro-mod-pill').forEach((b) => b.classList.remove('active'));
+    syncMacroComposerUiState();
     renderMacroComposerSteps();
     openModal('macroComposerModal');
   }
 
   function renderMacroComposerSteps() {
     const badge = document.getElementById('macroStepsCountBadge');
+    const clearBtn = document.getElementById('clearMacroStepsBtn');
     const listEl = document.getElementById('macroStepsListContainer') || document.getElementById('macroStepsEditorList');
     if (badge) badge.textContent = `${state.macroSteps.length} Adım`;
+    if (clearBtn) clearBtn.classList.toggle('hidden', state.macroSteps.length === 0);
     if (!listEl) return;
 
     if (!state.macroSteps.length) {
-      listEl.innerHTML = `<p class="section-subtitle">Henüz adım eklenmedi. Yukarıdan tuş kombinasyonu, metin veya bekleme ekleyin.</p>`;
+      listEl.innerHTML = `<p class="section-subtitle">Henüz adım eklenmedi. Tek kombinasyon için yukarıdan seçip doğrudan <strong>Kaydet</strong>'e basabilir veya birden fazla adım ekleyebilirsiniz.</p>`;
       return;
     }
 
     listEl.innerHTML = state.macroSteps
       .map((step, idx) => {
+        const act = String(step.action || 'tap').toLowerCase();
+        const holdMs = Number(step.holdMs || 0);
         const typeLabel =
           step.type === 'text'
             ? 'METİN'
@@ -2614,13 +2707,19 @@
             ? 'BEKLE'
             : step.type === 'system_action'
             ? 'SİSTEM'
+            : act === 'hold_until_stop'
+            ? 'TUT (SÜREKLİ)'
+            : act === 'hold' || holdMs > 0
+            ? 'BASILI TUT'
             : 'TUŞ';
         const valLabel =
           step.type === 'delay'
             ? `${Number(step.delayMs || step.value || 100)} ms`
             : step.type === 'system_action'
             ? String(step.label || step.value || '')
-            : String(step.value || '');
+            : step.type === 'text'
+            ? String(step.value || '')
+            : formatMacroStepBadge(step);
         return `
           <div class="macro-step-row">
             <div class="macro-step-row-left">
@@ -3346,7 +3445,7 @@
     }
     const ctx = remoteRender.ctx;
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'low';
+    ctx.imageSmoothingQuality = 'high';
     return ctx;
   }
 
@@ -3638,6 +3737,11 @@
       state.isStreaming = true;
       updateStreamUiState();
       const video = await detectVideoSupport();
+      const isAllMonitors = state.remoteMonitorIndex === -1;
+      const monFactor = isAllMonitors ? Math.max(2, (state.monitors && state.monitors.length) || 2) : 1;
+      const targetMaxCanvasWidth = isAllMonitors
+        ? Math.min(5120, Math.max(3840, preset.maxCanvasWidth * monFactor))
+        : preset.maxCanvasWidth;
       await sendCommand('start_stream', {
         protocol: 2,
         video,
@@ -3646,11 +3750,11 @@
         profile,
         monitorIndex: state.remoteMonitorIndex,
         maxFps: preset.fps,
-        maxCanvasWidth: preset.maxCanvasWidth,
+        maxCanvasWidth: targetMaxCanvasWidth,
         // legacy fields for older PC agents
         fps: preset.fps,
-        maxWidth: Math.min(1600, preset.maxCanvasWidth),
-        quality: 70,
+        maxWidth: isAllMonitors ? Math.min(3840, targetMaxCanvasWidth) : Math.min(1600, preset.maxCanvasWidth),
+        quality: isAllMonitors ? 82 : 70,
         drawCursor: true,
         binary: true
       });
@@ -3753,10 +3857,22 @@
     const dur = Math.max(0, Number(np.durationSec || 0));
     const pos = Math.max(0, Math.min(dur > 0 ? dur : 99999, Number(np.positionSec || 0)));
     curEl.textContent = formatMediaTime(pos);
-    totEl.textContent = formatMediaTime(dur);
-    seekEl.disabled = dur <= 0;
-    seekEl.max = dur > 0 ? dur : 100;
-    seekEl.value = dur > 0 ? pos : 0;
+    if (dur > 0) {
+      totEl.textContent = formatMediaTime(dur);
+      seekEl.disabled = false;
+      seekEl.max = dur;
+      seekEl.value = pos;
+    } else if (pos > 0 || np.isPlaying) {
+      totEl.textContent = 'CANLI';
+      seekEl.disabled = true;
+      seekEl.max = 100;
+      seekEl.value = 100;
+    } else {
+      totEl.textContent = '00:00';
+      seekEl.disabled = true;
+      seekEl.max = 100;
+      seekEl.value = 0;
+    }
     syncSliderFillPct(seekEl);
   }
 
@@ -3819,6 +3935,24 @@
         mediaPlayIntent = null;
       } else {
         np.isPlaying = mediaPlayIntent.isPlaying;
+      }
+    }
+
+    // Preserve known duration & continuous client elapsed time when an incoming 5s poll reports 0/0 for the same playing track
+    const prevNp = state.audio && state.audio.nowPlaying ? state.audio.nowPlaying : null;
+    if (prevNp && np.active) {
+      const prevTrackSig = `${prevNp.processName || ''}|${prevNp.title || ''}`;
+      const nextTrackSig = `${np.processName || ''}|${np.title || ''}`;
+      if (prevTrackSig === nextTrackSig && prevTrackSig !== '|') {
+        if (Number(np.durationSec || 0) <= 0 && Number(prevNp.durationSec || 0) > 0) {
+          np.durationSec = Number(prevNp.durationSec);
+        }
+        if (Number(np.positionSec || 0) <= 0 && Number(np.durationSec || 0) <= 0) {
+          const effPrev = getEffectiveNowPlaying();
+          if (effPrev && effPrev.positionSec > 0) {
+            np.positionSec = effPrev.positionSec;
+          }
+        }
       }
     }
 
@@ -7127,7 +7261,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.8';
+    let currentAppVer = '2.19.9';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -9734,9 +9868,22 @@
           const id = runBtn.getAttribute('data-run-macro');
           const found = (state.macros || []).find((m) => m.id === id);
           try {
-            await sendCommand('run_macro', { id }, 12000);
-            logAuditEvent('app', `Makro çalıştırıldı: ${(found && found.name) || 'Makro'}`);
-            showToast(`${(found && found.name) || 'Makro'} çalıştırıldı`);
+            const res = await sendCommand('run_macro', { id }, 12000);
+            if (res && Array.isArray(res.runningMacroIds)) {
+              state.runningMacroIds = res.runningMacroIds;
+              renderMacrosList();
+            }
+            const mName = (found && found.name) || 'Makro';
+            if (res && res.stopped) {
+              logAuditEvent('app', `Makro durduruldu: ${mName}`);
+              showToast(`${mName} durduruldu`);
+            } else if (res && res.running) {
+              logAuditEvent('app', `Makro başlatıldı: ${mName}`);
+              showToast(`${mName} çalışıyor (durdurmak için tekrar dokunun)`);
+            } else {
+              logAuditEvent('app', `Makro çalıştırıldı: ${mName}`);
+              showToast(`${mName} çalıştırıldı`);
+            }
           } catch (err) {
             showToast(err.message);
           }
@@ -9753,6 +9900,118 @@
       cancelMacroModalBtn.addEventListener('click', () => closeModal('macroComposerModal'));
     }
 
+    const macroRepeatModePills = document.getElementById('macroRepeatModePills');
+    if (macroRepeatModePills) {
+      macroRepeatModePills.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-repeat-mode]');
+        if (!btn) return;
+        triggerHaptic(8);
+        state.macroRepeatMode = btn.getAttribute('data-repeat-mode') || 'once';
+        syncMacroComposerUiState();
+      });
+    }
+
+    const macroDurationPresetChips = document.getElementById('macroDurationPresetChips');
+    if (macroDurationPresetChips) {
+      macroDurationPresetChips.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-dur-sec]');
+        if (!chip) return;
+        triggerHaptic(8);
+        const sec = Number(chip.getAttribute('data-dur-sec') || 5);
+        const inp = document.getElementById('macroRepeatDurationInput');
+        if (inp) inp.value = sec;
+        macroDurationPresetChips.querySelectorAll('.macro-mini-chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    }
+
+    const macroCountPresetChips = document.getElementById('macroCountPresetChips');
+    if (macroCountPresetChips) {
+      macroCountPresetChips.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-rep-count]');
+        if (!chip) return;
+        triggerHaptic(8);
+        const cnt = Number(chip.getAttribute('data-rep-count') || 5);
+        const inp = document.getElementById('macroRepeatCountInput');
+        if (inp) inp.value = cnt;
+        macroCountPresetChips.querySelectorAll('.macro-mini-chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    }
+
+    const macroIntervalPresetChips = document.getElementById('macroIntervalPresetChips');
+    if (macroIntervalPresetChips) {
+      macroIntervalPresetChips.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-int-ms]');
+        if (!chip) return;
+        triggerHaptic(8);
+        const ms = Number(chip.getAttribute('data-int-ms') || 120);
+        const inp = document.getElementById('macroRepeatIntervalInput');
+        if (inp) inp.value = ms;
+        macroIntervalPresetChips.querySelectorAll('.macro-mini-chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    }
+
+    const macroStepTypeTabs = document.getElementById('macroStepTypeTabs');
+    if (macroStepTypeTabs) {
+      macroStepTypeTabs.addEventListener('click', (e) => {
+        const tab = e.target.closest('[data-step-tab]');
+        if (!tab) return;
+        triggerHaptic(8);
+        state.macroStepTab = tab.getAttribute('data-step-tab') || 'key';
+        syncMacroComposerUiState();
+      });
+    }
+
+    const macroKeyActionPills = document.getElementById('macroKeyActionPills');
+    if (macroKeyActionPills) {
+      macroKeyActionPills.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-key-action]');
+        if (!btn) return;
+        triggerHaptic(8);
+        state.macroKeyAction = btn.getAttribute('data-key-action') || 'tap';
+        syncMacroComposerUiState();
+      });
+    }
+
+    const macroKeyHoldPresetChips = document.getElementById('macroKeyHoldPresetChips');
+    if (macroKeyHoldPresetChips) {
+      macroKeyHoldPresetChips.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-hold-sec]');
+        if (!chip) return;
+        triggerHaptic(8);
+        const sec = Number(chip.getAttribute('data-hold-sec') || 1);
+        const inp = document.getElementById('macroKeyHoldSecInput');
+        if (inp) inp.value = sec;
+        macroKeyHoldPresetChips.querySelectorAll('.macro-mini-chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    }
+
+    const macroDelayPresetChips = document.getElementById('macroDelayPresetChips');
+    if (macroDelayPresetChips) {
+      macroDelayPresetChips.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-delay-ms]');
+        if (!chip) return;
+        triggerHaptic(8);
+        const ms = Number(chip.getAttribute('data-delay-ms') || 250);
+        const inp = document.getElementById('macroDelayStepInput');
+        if (inp) inp.value = ms;
+        macroDelayPresetChips.querySelectorAll('.macro-mini-chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    }
+
+    const clearMacroStepsBtn = document.getElementById('clearMacroStepsBtn');
+    if (clearMacroStepsBtn) {
+      clearMacroStepsBtn.addEventListener('click', () => {
+        triggerHaptic(10);
+        state.macroSteps = [];
+        renderMacroComposerSteps();
+      });
+    }
+
     const macroModPills = document.getElementById('macroModPills');
     if (macroModPills) {
       macroModPills.addEventListener('click', (e) => {
@@ -9766,26 +10025,35 @@
       });
     }
 
+    const buildCurrentKeyStepFromForm = () => {
+      const keyInput = document.getElementById('macroBaseKeySelect') || document.getElementById('macroCustomKeyInput');
+      const rawKey = keyInput ? keyInput.value.trim().toUpperCase() : '';
+      const mods = Array.isArray(state.macroActiveMods) ? state.macroActiveMods : [];
+      if (!rawKey && !mods.length) return null;
+      const parts = [...mods];
+      if (rawKey && !parts.includes(rawKey)) parts.push(rawKey);
+      const combo = parts.join('+');
+      const action = state.macroKeyAction || 'tap';
+      const holdSecIn = document.getElementById('macroKeyHoldSecInput');
+      const holdMs = action === 'hold' ? Math.max(100, Math.round(Number((holdSecIn && holdSecIn.value) || 1) * 1000)) : 0;
+      if (keyInput) keyInput.value = '';
+      state.macroActiveMods = [];
+      document.querySelectorAll('#macroModPills .macro-mod-pill').forEach((b) => b.classList.remove('active'));
+      return { type: 'key', value: combo, action, holdMs };
+    };
+
     const addMacroKeyStepBtn = document.getElementById('addMacroKeyStepBtn');
     if (addMacroKeyStepBtn) {
       addMacroKeyStepBtn.addEventListener('click', () => {
         triggerHaptic(10);
-        const keyInput = document.getElementById('macroBaseKeySelect') || document.getElementById('macroCustomKeyInput');
-        const rawKey = keyInput ? keyInput.value.trim().toUpperCase() : '';
-        const mods = Array.isArray(state.macroActiveMods) ? state.macroActiveMods : [];
-        if (!rawKey && !mods.length) {
-          showToast('Lütfen bir tuş seçin veya üstten kısayol işaretleyin');
+        const stepObj = buildCurrentKeyStepFromForm();
+        if (!stepObj) {
+          showToast('Lütfen bir ana tuş seçin veya yardımcı tuş işaretleyin');
           return;
         }
-        const parts = [...mods];
-        if (rawKey && !parts.includes(rawKey)) parts.push(rawKey);
-        const combo = parts.join('+');
-        state.macroSteps.push({ type: 'key', value: combo });
-        if (keyInput) keyInput.value = '';
-        state.macroActiveMods = [];
-        document.querySelectorAll('#macroModPills .macro-mod-pill').forEach((b) => b.classList.remove('active'));
+        state.macroSteps.push(stepObj);
         const nameIn = document.getElementById('macroNameInput');
-        if (nameIn && !nameIn.value.trim()) nameIn.value = combo;
+        if (nameIn && !nameIn.value.trim()) nameIn.value = formatMacroStepBadge(stepObj);
         renderMacroComposerSteps();
       });
     }
@@ -9805,7 +10073,10 @@
           state.macroActiveMods = [];
           document.querySelectorAll('#macroModPills .macro-mod-pill').forEach((b) => b.classList.remove('active'));
         }
-        state.macroSteps.push({ type: 'key', value: combo });
+        const action = state.macroKeyAction || 'tap';
+        const holdSecIn = document.getElementById('macroKeyHoldSecInput');
+        const holdMs = action === 'hold' ? Math.max(100, Math.round(Number((holdSecIn && holdSecIn.value) || 1) * 1000)) : 0;
+        state.macroSteps.push({ type: 'key', value: combo, action, holdMs });
         const nameIn = document.getElementById('macroNameInput');
         if (nameIn && !nameIn.value.trim()) nameIn.value = chip.textContent.trim();
         renderMacroComposerSteps();
@@ -9843,6 +10114,8 @@
         }
         state.macroSteps.push({ type: 'text', value: val });
         if (txtIn) txtIn.value = '';
+        const nameIn = document.getElementById('macroNameInput');
+        if (nameIn && !nameIn.value.trim()) nameIn.value = val.slice(0, 24);
         renderMacroComposerSteps();
       });
     }
@@ -9852,8 +10125,8 @@
       addMacroDelayStepBtn.addEventListener('click', () => {
         triggerHaptic(10);
         const sel = document.getElementById('macroDelayStepInput') || document.getElementById('macroDelaySelect');
-        const ms = Math.max(20, Number((sel && sel.value) || 250));
-        state.macroSteps.push({ type: 'delay', delayMs: ms, value: `${ms}ms` });
+        const ms = Math.max(10, Number((sel && sel.value) || 250));
+        state.macroSteps.push({ type: 'delay', delayMs: ms, value: String(ms) });
         renderMacroComposerSteps();
       });
     }
@@ -9876,21 +10149,30 @@
     if (saveMacroConfirmBtn) {
       saveMacroConfirmBtn.addEventListener('click', async () => {
         triggerHaptic(14);
-        const keyInput = document.getElementById('macroBaseKeySelect') || document.getElementById('macroCustomKeyInput');
-        if (!state.macroSteps.length && keyInput && (keyInput.value.trim() || (state.macroActiveMods && state.macroActiveMods.length))) {
-          const rawKey = keyInput.value.trim().toUpperCase();
-          const mods = Array.isArray(state.macroActiveMods) ? state.macroActiveMods : [];
-          const parts = [...mods];
-          if (rawKey && !parts.includes(rawKey)) parts.push(rawKey);
-          if (parts.length) {
-            state.macroSteps.push({ type: 'key', value: parts.join('+') });
+        if (!state.macroSteps.length) {
+          const autoKeyStep = buildCurrentKeyStepFromForm();
+          if (autoKeyStep) {
+            state.macroSteps.push(autoKeyStep);
+          } else if (state.macroStepTab === 'system') {
+            const sysSel = document.getElementById('macroSystemActionSelect');
+            const code = sysSel ? sysSel.value.trim() : '';
+            if (code) {
+              const opt = sysSel.options[sysSel.selectedIndex];
+              state.macroSteps.push({ type: 'system_action', value: code, label: opt ? opt.textContent.trim() : code });
+            }
+          } else if (state.macroStepTab === 'text') {
+            const txtIn = document.getElementById('macroTextStepInput');
+            if (txtIn && txtIn.value.trim()) {
+              state.macroSteps.push({ type: 'text', value: txtIn.value });
+              txtIn.value = '';
+            }
           }
-          keyInput.value = '';
         }
+
         const nameIn = document.getElementById('macroNameInput');
         let name = nameIn ? nameIn.value.trim() : '';
         if (!name && state.macroSteps.length > 0) {
-          name = String(state.macroSteps[0].value || 'Makro');
+          name = formatMacroStepBadge(state.macroSteps[0]) || String(state.macroSteps[0].value || 'Makro');
           if (nameIn) nameIn.value = name;
         }
         if (!name) {
@@ -9898,14 +10180,23 @@
           return;
         }
         if (!state.macroSteps.length) {
-          showToast('Lütfen en az 1 tuş veya metin adımı ekleyin');
+          showToast('Lütfen en az 1 tuş, sistem işlevi veya metin adımı ekleyin');
           return;
         }
+
+        const durIn = document.getElementById('macroRepeatDurationInput');
+        const cntIn = document.getElementById('macroRepeatCountInput');
+        const intIn = document.getElementById('macroRepeatIntervalInput');
+
         try {
           const res = await sendCommand('save_macro', {
             macro: {
               id: state.editingMacroId || undefined,
               name,
+              repeatMode: state.macroRepeatMode || 'once',
+              repeatDurationSec: Math.max(1, Number((durIn && durIn.value) || 5)),
+              repeatCount: Math.max(1, Number((cntIn && cntIn.value) || 5)),
+              repeatIntervalMs: Math.max(20, Number((intIn && intIn.value) || 120)),
               steps: state.macroSteps
             }
           });

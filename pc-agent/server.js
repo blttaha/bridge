@@ -1817,55 +1817,253 @@ async function executeQuickAction(qa, onProgress) {
   };
 }
 
+const runningMacros = new Map();
+
+function getRunningMacroIds() {
+  return Array.from(runningMacros.keys());
+}
+
+function broadcastMacrosRuntimeState() {
+  broadcastStateUpdate('macros_runtime_updated', { runningMacroIds: getRunningMacroIds() });
+}
+
+function normalizeMacroStepPayload(s) {
+  const rawType = String((s && s.type) || 'key').toLowerCase();
+  const validTypes = ['key', 'key_down', 'key_up', 'text', 'delay', 'system_action', 'app'];
+  const type = validTypes.includes(rawType) ? rawType : 'key';
+  const value = String((s && s.value) ?? '').trim();
+  const rawAction = String((s && s.action) || '').toLowerCase();
+  const action = ['tap', 'hold', 'hold_until_stop', 'down', 'up'].includes(rawAction) ? rawAction : 'tap';
+  const holdMs = Math.max(0, Math.min(3600000, Number((s && s.holdMs) || 0)));
+  return {
+    id: (s && s.id) || crypto.randomUUID(),
+    type,
+    value,
+    label: String((s && s.label) || '').trim(),
+    action,
+    holdMs
+  };
+}
+
+function normalizeMacroPayload(incoming, prev) {
+  if (!incoming || !incoming.name) throw new Error('Makro adı gerekli.');
+  const rawSteps = Array.isArray(incoming.steps) ? incoming.steps : [];
+  if (rawSteps.length === 0) throw new Error('En az 1 makro adımı eklemelisiniz.');
+  const formattedSteps = rawSteps.map(normalizeMacroStepPayload).filter((s) => Boolean(s.value));
+  if (formattedSteps.length === 0) throw new Error('En az 1 geçerli makro adımı gerekli.');
+
+  const rawMode = String(incoming.repeatMode || (prev && prev.repeatMode) || 'once').toLowerCase();
+  const repeatMode = ['once', 'toggle', 'duration', 'count'].includes(rawMode) ? rawMode : 'once';
+  const repeatDurationSec = Math.max(1, Math.min(86400, Number(incoming.repeatDurationSec || (prev && prev.repeatDurationSec) || 5)));
+  const repeatCount = Math.max(1, Math.min(10000, Number(incoming.repeatCount || (prev && prev.repeatCount) || 5)));
+  const repeatIntervalMs = Math.max(20, Math.min(60000, Number(incoming.repeatIntervalMs ?? (prev && prev.repeatIntervalMs) ?? 120)));
+
+  return {
+    id: incoming.id || (prev && prev.id) || crypto.randomUUID(),
+    name: String(incoming.name).trim(),
+    repeatMode,
+    repeatDurationSec,
+    repeatCount,
+    repeatIntervalMs,
+    createdAt: (prev && prev.createdAt) || incoming.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastRunAt: (prev && prev.lastRunAt) || null,
+    runCount: Number((prev && prev.runCount) || 0),
+    steps: formattedSteps
+  };
+}
+
+async function stopRunningMacro(macroId) {
+  const ctx = runningMacros.get(macroId);
+  if (!ctx) return { ok: true, stopped: false, runningMacroIds: getRunningMacroIds() };
+  ctx.aborted = true;
+  if (ctx.wake) ctx.wake();
+  return { ok: true, stopped: true, id: macroId, runningMacroIds: getRunningMacroIds() };
+}
+
 async function executeMacro(macro) {
+  if (runningMacros.has(macro.id)) {
+    return stopRunningMacro(macro.id);
+  }
+
   const startedAt = Date.now();
   const steps = Array.isArray(macro.steps) ? macro.steps : [];
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i] || {};
-    const stepType = String(step.type || 'key').toLowerCase();
-    if (stepType === 'delay') {
-      const ms = Math.max(10, Math.min(30000, Number(step.value || 100)));
-      await new Promise((r) => setTimeout(r, ms));
-    } else if (stepType === 'system_action') {
-      const actionCode = String(step.value || '').trim();
-      if (actionCode) {
-        await executeSystemActionCode(actionCode).catch(() => {});
-      }
-      if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
-        await new Promise((r) => setTimeout(r, 80));
-      }
-    } else if (stepType === 'app') {
-      const launchPath = String(step.value || '').trim();
-      if (launchPath) {
-        await launchApplication({ name: step.label || launchPath, launchPath, args: step.args || '' }).catch(() => {});
-      }
-      if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
-        await new Promise((r) => setTimeout(r, 120));
-      }
-    } else if (stepType === 'text') {
-      const txt = String(step.value || '');
-      if (txt) {
-        await bridge.call('send_input', { type: 'text', text: txt }, 3000).catch(() => {});
-      }
-      if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
-        await new Promise((r) => setTimeout(r, 40));
-      }
-    } else {
-      const keyStr = String(step.value || '').trim().toUpperCase();
-      if (keyStr) {
-        await bridge.call('send_input', { type: 'key', key: keyStr }, 2000).catch(() => {});
-      }
-      if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
-        await new Promise((r) => setTimeout(r, 40));
+  const repeatMode = String(macro.repeatMode || 'once').toLowerCase();
+  const repeatDurationMs = Math.max(500, Number(macro.repeatDurationSec || 5) * 1000);
+  const repeatCount = Math.max(1, Number(macro.repeatCount || 1));
+  const repeatIntervalMs = Math.max(25, Number(macro.repeatIntervalMs ?? 120));
+
+  const hasContinuousHold = steps.some((s) => s && (s.action === 'hold_until_stop' || Number(s.holdMs || 0) >= 800));
+  const isLongRunning = repeatMode === 'toggle' || repeatMode === 'duration' || (repeatMode === 'count' && repeatCount > 1) || hasContinuousHold;
+
+  const ctx = {
+    id: macro.id,
+    aborted: false,
+    heldKeys: new Set(),
+    wake: null
+  };
+
+  const sleepInterruptible = (ms) =>
+    new Promise((resolve) => {
+      if (ctx.aborted || ms <= 0) return resolve();
+      const t = setTimeout(() => {
+        ctx.wake = null;
+        resolve();
+      }, ms);
+      ctx.wake = () => {
+        clearTimeout(t);
+        ctx.wake = null;
+        resolve();
+      };
+    });
+
+  const runSinglePass = async () => {
+    for (let i = 0; i < steps.length; i++) {
+      if (ctx.aborted) break;
+      const step = steps[i] || {};
+      const stepType = String(step.type || 'key').toLowerCase();
+      const stepAction = String(step.action || 'tap').toLowerCase();
+      const holdMs = Math.max(0, Number(step.holdMs || 0));
+
+      if (stepType === 'delay') {
+        const ms = Math.max(10, Math.min(300000, Number(step.value || 100)));
+        await sleepInterruptible(ms);
+      } else if (stepType === 'system_action') {
+        const actionCode = String(step.value || '').trim();
+        if (actionCode) {
+          await executeSystemActionCode(actionCode).catch(() => {});
+        }
+        if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
+          await sleepInterruptible(80);
+        }
+      } else if (stepType === 'app') {
+        const launchPath = String(step.value || '').trim();
+        if (launchPath) {
+          await launchApplication({ name: step.label || launchPath, launchPath, args: step.args || '' }).catch(() => {});
+        }
+        if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
+          await sleepInterruptible(120);
+        }
+      } else if (stepType === 'text') {
+        const txt = String(step.value || '');
+        if (txt) {
+          await bridge.call('send_input', { type: 'text', text: txt }, 3000).catch(() => {});
+        }
+        if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
+          await sleepInterruptible(40);
+        }
+      } else {
+        const keyStr = String(step.value || '').trim().toUpperCase();
+        if (!keyStr) continue;
+
+        if (stepType === 'key_down' || stepAction === 'down' || stepAction === 'hold_until_stop') {
+          ctx.heldKeys.add(keyStr);
+          await bridge.call('send_input', { type: 'key_down', key: keyStr }, 2000).catch(() => {});
+          if (stepAction === 'hold_until_stop' && repeatMode === 'once') {
+            while (!ctx.aborted) {
+              await sleepInterruptible(250);
+            }
+          }
+        } else if (stepType === 'key_up' || stepAction === 'up') {
+          ctx.heldKeys.delete(keyStr);
+          await bridge.call('send_input', { type: 'key_up', key: keyStr }, 2000).catch(() => {});
+        } else if (stepAction === 'hold' || holdMs > 0) {
+          const effectiveHold = Math.max(50, holdMs || 1000);
+          ctx.heldKeys.add(keyStr);
+          await bridge.call('send_input', { type: 'key_down', key: keyStr }, 2000).catch(() => {});
+          await sleepInterruptible(effectiveHold);
+          ctx.heldKeys.delete(keyStr);
+          await bridge.call('send_input', { type: 'key_up', key: keyStr }, 2000).catch(() => {});
+        } else {
+          await bridge.call('send_input', { type: 'key', key: keyStr }, 2000).catch(() => {});
+        }
+
+        if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
+          await sleepInterruptible(40);
+        }
       }
     }
-  }
+  };
+
   macro.runCount = Number(macro.runCount || 0) + 1;
   macro.lastRunAt = new Date().toISOString();
   saveMacros(macros);
+
+  const executeLoop = async () => {
+    runningMacros.set(macro.id, ctx);
+    broadcastMacrosRuntimeState();
+    try {
+      const onlyHoldUntilStop = steps.length > 0 && steps.every((s) => s && s.action === 'hold_until_stop');
+      if (onlyHoldUntilStop) {
+        for (const s of steps) {
+          const k = String(s.value || '').trim().toUpperCase();
+          if (k) {
+            ctx.heldKeys.add(k);
+            await bridge.call('send_input', { type: 'key_down', key: k }, 2000).catch(() => {});
+          }
+        }
+        const waitLimit = repeatMode === 'duration' ? repeatDurationMs : 86400000;
+        await sleepInterruptible(waitLimit);
+      } else if (repeatMode === 'toggle') {
+        while (!ctx.aborted) {
+          await runSinglePass();
+          if (ctx.aborted) break;
+          await sleepInterruptible(repeatIntervalMs);
+        }
+      } else if (repeatMode === 'duration') {
+        const deadline = Date.now() + repeatDurationMs;
+        const killTimer = setTimeout(() => {
+          ctx.aborted = true;
+          if (ctx.wake) ctx.wake();
+        }, repeatDurationMs);
+        try {
+          while (!ctx.aborted && Date.now() < deadline) {
+            await runSinglePass();
+            if (ctx.aborted || Date.now() >= deadline) break;
+            await sleepInterruptible(Math.min(repeatIntervalMs, Math.max(10, deadline - Date.now())));
+          }
+        } finally {
+          clearTimeout(killTimer);
+        }
+      } else if (repeatMode === 'count') {
+        for (let c = 0; c < repeatCount; c++) {
+          if (ctx.aborted) break;
+          await runSinglePass();
+          if (ctx.aborted || c >= repeatCount - 1) break;
+          await sleepInterruptible(repeatIntervalMs);
+        }
+      } else {
+        await runSinglePass();
+      }
+    } finally {
+      for (const k of Array.from(ctx.heldKeys)) {
+        await bridge.call('send_input', { type: 'key_up', key: k }, 2000).catch(() => {});
+      }
+      ctx.heldKeys.clear();
+      runningMacros.delete(macro.id);
+      broadcastMacrosRuntimeState();
+    }
+  };
+
+  if (isLongRunning) {
+    executeLoop().catch(() => {});
+    return {
+      id: macro.id,
+      name: macro.name,
+      started: true,
+      running: true,
+      repeatMode,
+      runningMacroIds: getRunningMacroIds(),
+      stepCount: steps.length
+    };
+  }
+
+  await executeLoop();
   return {
     id: macro.id,
     name: macro.name,
+    running: false,
+    runningMacroIds: getRunningMacroIds(),
     elapsedMs: Date.now() - startedAt,
     stepCount: steps.length
   };
@@ -2504,36 +2702,20 @@ const handleHttpRequest = async (req, res) => {
           if (!targetMacro) throw new Error('Makro bulunamadı.');
           resultData = await executeMacro(targetMacro);
           broadcastStateUpdate('macros_updated', macros);
+        } else if (action === 'stop_macro') {
+          resultData = await stopRunningMacro(params.id);
         } else if (action === 'save_macro') {
           const incoming = params.macro || params;
-          if (!incoming || !incoming.name) throw new Error('Makro adı gerekli.');
-          const rawSteps = Array.isArray(incoming.steps) ? incoming.steps : [];
-          if (rawSteps.length === 0) throw new Error('En az 1 makro adımı eklemelisiniz.');
-          const formattedSteps = rawSteps
-            .map((s) => ({
-              id: s.id || crypto.randomUUID(),
-              type: ['key', 'text', 'delay'].includes(String(s.type || '').toLowerCase()) ? String(s.type).toLowerCase() : 'key',
-              value: String(s.value ?? '').trim()
-            }))
-            .filter((s) => Boolean(s.value));
-          if (formattedSteps.length === 0) throw new Error('En az 1 geçerli makro adımı gerekli.');
           const existingIdx = macros.findIndex((m) => m.id === incoming.id);
           const prev = existingIdx >= 0 ? macros[existingIdx] : null;
-          const formatted = {
-            id: incoming.id || crypto.randomUUID(),
-            name: String(incoming.name).trim(),
-            createdAt: (prev && prev.createdAt) || incoming.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            lastRunAt: (prev && prev.lastRunAt) || null,
-            runCount: Number((prev && prev.runCount) || 0),
-            steps: formattedSteps
-          };
+          const formatted = normalizeMacroPayload(incoming, prev);
           if (existingIdx >= 0) macros[existingIdx] = formatted;
           else macros.unshift(formatted);
           saveMacros(macros);
           broadcastStateUpdate('macros_updated', macros);
           resultData = { macro: formatted, macros };
         } else if (action === 'delete_macro') {
+          await stopRunningMacro(params.id).catch(() => {});
           macros = macros.filter((m) => m.id !== params.id);
           saveMacros(macros);
           broadcastStateUpdate('macros_updated', macros);
@@ -2983,6 +3165,11 @@ function startStreamV2(ws, params) {
         maxLevel: Math.min(baseProfile.maxLevel, STREAM_TUNNEL_MAX_LEVEL)
       }
     : baseProfile;
+  const monIdx = typeof params.monitorIndex === 'number' ? params.monitorIndex : 0;
+  const isAllMonitors = monIdx < 0;
+  const defaultCanvasCap = isAllMonitors ? Math.max(3840, profile.maxCanvasWidth * 2) : profile.maxCanvasWidth;
+  const maxAllowedCanvasWidth = isAllMonitors ? 5120 : 3840;
+  const effectiveVideoMaxWidth = isAllMonitors ? Math.max(3840, profile.videoMaxWidth * 2) : profile.videoMaxWidth;
   const st = {
     active: true,
     timer: null,
@@ -2990,9 +3177,11 @@ function startStreamV2(ws, params) {
     tcpSock: null,
     profile: {
       ...profile,
-      maxCanvasWidth: Math.max(640, Math.min(3840, Number(params.maxCanvasWidth) || profile.maxCanvasWidth))
+      maxCanvasWidth: Math.max(640, Math.min(maxAllowedCanvasWidth, Number(params.maxCanvasWidth) || defaultCanvasCap)),
+      videoMaxWidth: effectiveVideoMaxWidth
     },
-    monitorIndex: typeof params.monitorIndex === 'number' ? params.monitorIndex : 0,
+    monitorIndex: monIdx,
+    isAllMonitors,
     maxFps: Math.max(10, Math.min(60, Number(params.maxFps) || profile.maxFps)),
     // The phone only advertises video when WebCodecs can decode H.264
     allowVideo: params.video === true,
@@ -3079,7 +3268,8 @@ function startStreamV2(ws, params) {
       req[14] = mode;
       req[15] = (st.allowVideo ? 2 : 0) | (st.allowAv1 ? 4 : 0);
       req.writeUInt16LE(waitMs, 16);
-      req.writeUInt16LE(Math.round(lv.kbps / 100), 18);
+      const effectiveKbps = st.isAllMonitors ? Math.round(lv.kbps * 1.5) : lv.kbps;
+      req.writeUInt16LE(Math.round(effectiveKbps / 100), 18);
       req.writeUInt16LE(st.profile.videoMaxWidth, 20);
       req.writeUInt16LE(st.maxFps, 22);
       pendingFrame = resolve;
@@ -3823,28 +4013,9 @@ wss.on('connection', (ws, req) => {
 
         case 'save_macro': {
           const incoming = params.macro || params;
-          if (!incoming || !incoming.name) throw new Error('Makro adı gerekli.');
-          const rawSteps = Array.isArray(incoming.steps) ? incoming.steps : [];
-          if (rawSteps.length === 0) throw new Error('En az 1 makro adımı eklemelisiniz.');
-          const formattedSteps = rawSteps
-            .map((s) => ({
-              id: s.id || crypto.randomUUID(),
-              type: ['key', 'text', 'delay'].includes(String(s.type || '').toLowerCase()) ? String(s.type).toLowerCase() : 'key',
-              value: String(s.value ?? '').trim()
-            }))
-            .filter((s) => Boolean(s.value));
-          if (formattedSteps.length === 0) throw new Error('En az 1 geçerli makro adımı gerekli.');
           const existingIdx = macros.findIndex((m) => m.id === incoming.id);
           const prev = existingIdx >= 0 ? macros[existingIdx] : null;
-          const formatted = {
-            id: incoming.id || crypto.randomUUID(),
-            name: String(incoming.name).trim(),
-            createdAt: (prev && prev.createdAt) || incoming.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            lastRunAt: (prev && prev.lastRunAt) || null,
-            runCount: Number((prev && prev.runCount) || 0),
-            steps: formattedSteps
-          };
+          const formatted = normalizeMacroPayload(incoming, prev);
           if (existingIdx >= 0) macros[existingIdx] = formatted;
           else macros.unshift(formatted);
           saveMacros(macros);
@@ -3853,6 +4024,7 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'delete_macro': {
+          await stopRunningMacro(params.id).catch(() => {});
           macros = macros.filter((m) => m.id !== params.id);
           saveMacros(macros);
           broadcastStateUpdate('macros_updated', macros);
@@ -3865,6 +4037,11 @@ wss.on('connection', (ws, req) => {
           const execRes = await executeMacro(targetMacro);
           broadcastStateUpdate('macros_updated', macros);
           return reply(true, { ...execRes, macros });
+        }
+
+        case 'stop_macro': {
+          const stopRes = await stopRunningMacro(params.id);
+          return reply(true, stopRes);
         }
 
         case 'run_single_item': {

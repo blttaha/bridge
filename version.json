@@ -1,7 +1,7 @@
 {
-  "version": "2.19.8",
-  "versionCode": 16,
-  "releasedAt": "2026-11-01T22:30:00Z",
+  "version": "2.19.9",
+  "versionCode": 17,
+  "releasedAt": "2026-11-01T23:30:00Z",
   "repository": "https://github.com/blttaha/bridge",
   "assets": {
     "windows": "https://github.com/blttaha/bridge/releases/latest/download/Bridge-Setup.exe",

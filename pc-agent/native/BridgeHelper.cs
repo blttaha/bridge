@@ -1003,6 +1003,11 @@ namespace TahaBLT
                 RunVideoSelfTest(args.Length > 1 && args[1] == "av1", args.Length > 2 ? args[2] : null);
                 return;
             }
+            if (args.Length >= 4 && args[0] == "--user-media-worker")
+            {
+                RunUserMediaWorker(args);
+                return;
+            }
             try { Console.InputEncoding = Encoding.UTF8; } catch { }
             try { Console.OutputEncoding = Encoding.UTF8; } catch { }
             try
@@ -4481,6 +4486,18 @@ namespace TahaBLT
                 SendKeyCombo(key);
                 return new { ok = true };
             }
+            else if (type == "key_down")
+            {
+                string key = args.ContainsKey("key") ? Convert.ToString(args["key"]).ToUpperInvariant() : "";
+                SendKeyComboDown(key);
+                return new { ok = true, holding = true };
+            }
+            else if (type == "key_up")
+            {
+                string key = args.ContainsKey("key") ? Convert.ToString(args["key"]).ToUpperInvariant() : "";
+                SendKeyComboUp(key);
+                return new { ok = true, holding = false };
+            }
 
             return new { ok = false };
         }
@@ -4507,35 +4524,180 @@ namespace TahaBLT
             return false;
         }
 
+        private static bool TryParseMouseMacroToken(string token, out uint downFlag, out uint upFlag, out bool isDouble)
+        {
+            downFlag = 0;
+            upFlag = 0;
+            isDouble = false;
+            string t = (token ?? "").Trim().ToUpperInvariant();
+            if (t == "MOUSE_LEFT" || t == "LCLICK" || t == "LEFT_CLICK")
+            {
+                downFlag = MOUSEEVENTF_LEFTDOWN;
+                upFlag = MOUSEEVENTF_LEFTUP;
+                return true;
+            }
+            if (t == "MOUSE_DOUBLE" || t == "DBLCLICK" || t == "DOUBLE_CLICK")
+            {
+                downFlag = MOUSEEVENTF_LEFTDOWN;
+                upFlag = MOUSEEVENTF_LEFTUP;
+                isDouble = true;
+                return true;
+            }
+            if (t == "MOUSE_RIGHT" || t == "RCLICK" || t == "RIGHT_CLICK")
+            {
+                downFlag = MOUSEEVENTF_RIGHTDOWN;
+                upFlag = MOUSEEVENTF_RIGHTUP;
+                return true;
+            }
+            if (t == "MOUSE_MIDDLE" || t == "MCLICK" || t == "MIDDLE_CLICK")
+            {
+                downFlag = MOUSEEVENTF_MIDDLEDOWN;
+                upFlag = MOUSEEVENTF_MIDDLEUP;
+                return true;
+            }
+            return false;
+        }
+
         private static void SendKeyCombo(string combo)
         {
-            var parts = combo.Split('+');
+            var parts = (combo ?? "").Split('+');
             var vks = new List<ushort>();
+            uint mouseDown = 0, mouseUp = 0;
+            bool mouseDouble = false;
             foreach (var p in parts)
             {
-                ushort vk = MapKeyNameToVk(p.Trim());
+                string trimmed = p.Trim();
+                uint md, mu;
+                bool dbl;
+                if (TryParseMouseMacroToken(trimmed, out md, out mu, out dbl))
+                {
+                    mouseDown = md;
+                    mouseUp = mu;
+                    mouseDouble = dbl;
+                    continue;
+                }
+                ushort vk = MapKeyNameToVk(trimmed);
                 if (vk != 0) vks.Add(vk);
             }
-            if (vks.Count == 0) return;
+            if (vks.Count == 0 && mouseDown == 0) return;
 
-            var inputs = new List<INPUT>();
-            foreach (var vk in vks)
+            if (vks.Count > 0)
             {
-                inputs.Add(new INPUT
+                var downInputs = new List<INPUT>();
+                foreach (var vk in vks)
                 {
-                    type = INPUT_KEYBOARD,
-                    U = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = IsExtendedVk(vk) ? KEYEVENTF_EXTENDEDKEY : 0u } }
-                });
+                    downInputs.Add(new INPUT
+                    {
+                        type = INPUT_KEYBOARD,
+                        U = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = IsExtendedVk(vk) ? KEYEVENTF_EXTENDEDKEY : 0u } }
+                    });
+                }
+                SendInput((uint)downInputs.Count, downInputs.ToArray(), Marshal.SizeOf(typeof(INPUT)));
             }
-            for (int i = vks.Count - 1; i >= 0; i--)
+
+            if (mouseDown != 0)
             {
-                inputs.Add(new INPUT
+                mouse_event(mouseDown | mouseUp, 0, 0, 0, IntPtr.Zero);
+                if (mouseDouble)
                 {
-                    type = INPUT_KEYBOARD,
-                    U = new InputUnion { ki = new KEYBDINPUT { wVk = vks[i], dwFlags = KEYEVENTF_KEYUP | (IsExtendedVk(vks[i]) ? KEYEVENTF_EXTENDEDKEY : 0u) } }
-                });
+                    Thread.Sleep(25);
+                    mouse_event(mouseDown | mouseUp, 0, 0, 0, IntPtr.Zero);
+                }
             }
-            SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(INPUT)));
+
+            if (vks.Count > 0)
+            {
+                var upInputs = new List<INPUT>();
+                for (int i = vks.Count - 1; i >= 0; i--)
+                {
+                    upInputs.Add(new INPUT
+                    {
+                        type = INPUT_KEYBOARD,
+                        U = new InputUnion { ki = new KEYBDINPUT { wVk = vks[i], dwFlags = KEYEVENTF_KEYUP | (IsExtendedVk(vks[i]) ? KEYEVENTF_EXTENDEDKEY : 0u) } }
+                    });
+                }
+                SendInput((uint)upInputs.Count, upInputs.ToArray(), Marshal.SizeOf(typeof(INPUT)));
+            }
+        }
+
+        private static void SendKeyComboDown(string combo)
+        {
+            var parts = (combo ?? "").Split('+');
+            var vks = new List<ushort>();
+            uint mouseDown = 0, mouseUp = 0;
+            bool mouseDouble = false;
+            foreach (var p in parts)
+            {
+                string trimmed = p.Trim();
+                uint md, mu;
+                bool dbl;
+                if (TryParseMouseMacroToken(trimmed, out md, out mu, out dbl))
+                {
+                    mouseDown = md;
+                    mouseUp = mu;
+                    mouseDouble = dbl;
+                    continue;
+                }
+                ushort vk = MapKeyNameToVk(trimmed);
+                if (vk != 0) vks.Add(vk);
+            }
+            if (vks.Count > 0)
+            {
+                var inputs = new List<INPUT>();
+                foreach (var vk in vks)
+                {
+                    inputs.Add(new INPUT
+                    {
+                        type = INPUT_KEYBOARD,
+                        U = new InputUnion { ki = new KEYBDINPUT { wVk = vk, dwFlags = IsExtendedVk(vk) ? KEYEVENTF_EXTENDEDKEY : 0u } }
+                    });
+                }
+                SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(INPUT)));
+            }
+            if (mouseDown != 0)
+            {
+                mouse_event(mouseDown, 0, 0, 0, IntPtr.Zero);
+            }
+        }
+
+        private static void SendKeyComboUp(string combo)
+        {
+            var parts = (combo ?? "").Split('+');
+            var vks = new List<ushort>();
+            uint mouseDown = 0, mouseUp = 0;
+            bool mouseDouble = false;
+            foreach (var p in parts)
+            {
+                string trimmed = p.Trim();
+                uint md, mu;
+                bool dbl;
+                if (TryParseMouseMacroToken(trimmed, out md, out mu, out dbl))
+                {
+                    mouseDown = md;
+                    mouseUp = mu;
+                    mouseDouble = dbl;
+                    continue;
+                }
+                ushort vk = MapKeyNameToVk(trimmed);
+                if (vk != 0) vks.Add(vk);
+            }
+            if (mouseUp != 0)
+            {
+                mouse_event(mouseUp, 0, 0, 0, IntPtr.Zero);
+            }
+            if (vks.Count > 0)
+            {
+                var inputs = new List<INPUT>();
+                for (int i = vks.Count - 1; i >= 0; i--)
+                {
+                    inputs.Add(new INPUT
+                    {
+                        type = INPUT_KEYBOARD,
+                        U = new InputUnion { ki = new KEYBDINPUT { wVk = vks[i], dwFlags = KEYEVENTF_KEYUP | (IsExtendedVk(vks[i]) ? KEYEVENTF_EXTENDEDKEY : 0u) } }
+                    });
+                }
+                SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(INPUT)));
+            }
         }
 
         private static ushort MapKeyNameToVk(string k)
@@ -5435,27 +5597,320 @@ namespace TahaBLT
         private static double lastSeekPositionSec = 0.0;
         private static DateTimeOffset lastSeekWallUtc = DateTimeOffset.MinValue;
         private static readonly object mediaSelectLock = new object();
+        private static bool isUserMediaWorkerProcess = false;
+        private static readonly object userMediaWorkerLock = new object();
+        private static System.Net.Sockets.TcpListener userMediaListener = null;
+        private static int userMediaListenPort = 0;
+        private static string userMediaSecret = Guid.NewGuid().ToString("N");
+        private static System.Net.Sockets.TcpClient userMediaClient = null;
+        private static StreamReader userMediaReader = null;
+        private static StreamWriter userMediaWriter = null;
+        private static uint userMediaWorkerSessionId = 0xFFFFFFFF;
+        private static int userMediaWorkerPid = 0;
+        private static long lastUserMediaSpawnAttemptTick = 0;
+        private static string fallbackMediaTrackKey = "";
+        private static double fallbackMediaPosSec = 0.0;
+        private static DateTimeOffset fallbackMediaLastUtc = DateTimeOffset.MinValue;
+
+        private static bool EnsureUserMediaWorkerConnected()
+        {
+            if (userMediaClient != null && userMediaClient.Connected && userMediaReader != null && userMediaWriter != null)
+            {
+                return true;
+            }
+            try
+            {
+                if (userMediaListener == null)
+                {
+                    userMediaListener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+                    userMediaListener.Start(2);
+                    userMediaListenPort = ((System.Net.IPEndPoint)userMediaListener.LocalEndpoint).Port;
+                }
+                if (userMediaListener.Pending())
+                {
+                    var c = userMediaListener.AcceptTcpClient();
+                    c.NoDelay = true;
+                    c.ReceiveTimeout = 900;
+                    c.SendTimeout = 900;
+                    var ns = c.GetStream();
+                    var sr = new StreamReader(ns, new UTF8Encoding(false));
+                    var sw = new StreamWriter(ns, new UTF8Encoding(false)) { AutoFlush = true };
+                    string hello = sr.ReadLine();
+                    if (hello == "HELLO " + userMediaSecret)
+                    {
+                        try { if (userMediaClient != null) userMediaClient.Close(); } catch { }
+                        userMediaClient = c;
+                        userMediaReader = sr;
+                        userMediaWriter = sw;
+                        return true;
+                    }
+                    try { c.Close(); } catch { }
+                }
+
+                long nowTick = Environment.TickCount;
+                bool workerAlive = false;
+                if (userMediaWorkerPid > 0)
+                {
+                    try
+                    {
+                        var p = Process.GetProcessById(userMediaWorkerPid);
+                        workerAlive = p != null && !p.HasExited;
+                    }
+                    catch { workerAlive = false; }
+                }
+
+                uint activeSession = WTSGetActiveConsoleSessionId();
+                if ((!workerAlive || activeSession != userMediaWorkerSessionId) && Math.Abs(nowTick - lastUserMediaSpawnAttemptTick) > 2000)
+                {
+                    lastUserMediaSpawnAttemptTick = nowTick;
+                    SpawnUserMediaWorkerProcess(activeSession);
+                    for (int wait = 0; wait < 25; wait++)
+                    {
+                        if (userMediaListener.Pending())
+                        {
+                            var c = userMediaListener.AcceptTcpClient();
+                            c.NoDelay = true;
+                            c.ReceiveTimeout = 900;
+                            c.SendTimeout = 900;
+                            var ns = c.GetStream();
+                            var sr = new StreamReader(ns, new UTF8Encoding(false));
+                            var sw = new StreamWriter(ns, new UTF8Encoding(false)) { AutoFlush = true };
+                            string hello = sr.ReadLine();
+                            if (hello == "HELLO " + userMediaSecret)
+                            {
+                                try { if (userMediaClient != null) userMediaClient.Close(); } catch { }
+                                userMediaClient = c;
+                                userMediaReader = sr;
+                                userMediaWriter = sw;
+                                return true;
+                            }
+                            try { c.Close(); } catch { }
+                        }
+                        Thread.Sleep(25);
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static void SpawnUserMediaWorkerProcess(uint sessionId)
+        {
+            if (sessionId == 0xFFFFFFFF || sessionId == 0) return;
+            IntPtr userToken = IntPtr.Zero;
+            IntPtr primaryToken = IntPtr.Zero;
+            IntPtr envBlock = IntPtr.Zero;
+            try
+            {
+                if (!WTSQueryUserToken(sessionId, out userToken) || userToken == IntPtr.Zero) return;
+                if (!DuplicateTokenEx(userToken, 0xF01FF, IntPtr.Zero, 2, 1, out primaryToken) || primaryToken == IntPtr.Zero) return;
+                CreateEnvironmentBlock(out envBlock, primaryToken, false);
+
+                string exePath = Process.GetCurrentProcess().MainModule.FileName;
+                int selfPid = Process.GetCurrentProcess().Id;
+                StringBuilder cmdLine = new StringBuilder();
+                cmdLine.Append("\"").Append(exePath).Append("\" --user-media-worker ").Append(userMediaListenPort).Append(" ").Append(userMediaSecret).Append(" ").Append(selfPid);
+
+                STARTUPINFO si = new STARTUPINFO();
+                si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
+                si.lpDesktop = "winsta0\\default";
+                si.dwFlags = 0x00000001; // STARTF_USESHOWWINDOW
+                si.wShowWindow = 0; // SW_HIDE
+
+                PROCESS_INFORMATION pi;
+                uint flags = 0x00000400u | 0x08000000u; // CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW
+                if (CreateProcessAsUserW(primaryToken, null, cmdLine, IntPtr.Zero, IntPtr.Zero, false, flags, envBlock, Path.GetDirectoryName(exePath), ref si, out pi))
+                {
+                    userMediaWorkerPid = pi.dwProcessId;
+                    userMediaWorkerSessionId = sessionId;
+                    if (pi.hThread != IntPtr.Zero) CloseHandle(pi.hThread);
+                    if (pi.hProcess != IntPtr.Zero) CloseHandle(pi.hProcess);
+                }
+            }
+            catch { }
+            finally
+            {
+                if (envBlock != IntPtr.Zero) try { DestroyEnvironmentBlock(envBlock); } catch { }
+                if (primaryToken != IntPtr.Zero) try { CloseHandle(primaryToken); } catch { }
+                if (userToken != IntPtr.Zero) try { CloseHandle(userToken); } catch { }
+            }
+        }
+
+        private static List<GsmtcMediaSnapshot> QueryUserMediaWorker(double? seekPositionSec, string targetProcHint, string mediaCommandKey = null)
+        {
+            lock (userMediaWorkerLock)
+            {
+                if (!EnsureUserMediaWorkerConnected()) return null;
+                try
+                {
+                    var req = new Dictionary<string, object>();
+                    if (!string.IsNullOrEmpty(mediaCommandKey))
+                    {
+                        req["op"] = "cmd";
+                        req["key"] = mediaCommandKey;
+                    }
+                    else
+                    {
+                        req["op"] = "snapshot";
+                        if (seekPositionSec.HasValue) req["seek"] = seekPositionSec.Value;
+                        if (!string.IsNullOrEmpty(targetProcHint)) req["hint"] = targetProcHint;
+                    }
+                    userMediaWriter.WriteLine(serializer.Serialize(req));
+                    string line = userMediaReader.ReadLine();
+                    if (string.IsNullOrEmpty(line))
+                    {
+                        try { userMediaClient.Close(); } catch { }
+                        userMediaClient = null;
+                        return null;
+                    }
+                    var resp = serializer.Deserialize<Dictionary<string, object>>(line);
+                    var list = new List<GsmtcMediaSnapshot>();
+                    if (resp != null && resp.ContainsKey("sessions") && resp["sessions"] is ArrayList)
+                    {
+                        foreach (object item in (ArrayList)resp["sessions"])
+                        {
+                            var d = item as Dictionary<string, object>;
+                            if (d == null) continue;
+                            list.Add(new GsmtcMediaSnapshot
+                            {
+                                AppId = d.ContainsKey("AppId") ? Convert.ToString(d["AppId"] ?? "") : "",
+                                Title = d.ContainsKey("Title") ? Convert.ToString(d["Title"] ?? "") : "",
+                                Artist = d.ContainsKey("Artist") ? Convert.ToString(d["Artist"] ?? "") : "",
+                                IsPlaying = d.ContainsKey("IsPlaying") && Convert.ToBoolean(d["IsPlaying"]),
+                                PositionSec = d.ContainsKey("PositionSec") ? Convert.ToDouble(d["PositionSec"]) : 0.0,
+                                DurationSec = d.ContainsKey("DurationSec") ? Convert.ToDouble(d["DurationSec"]) : 0.0,
+                                IsCurrent = d.ContainsKey("IsCurrent") && Convert.ToBoolean(d["IsCurrent"]),
+                                SessionObj = "USER_WORKER"
+                            });
+                        }
+                    }
+                    return list;
+                }
+                catch
+                {
+                    try { if (userMediaClient != null) userMediaClient.Close(); } catch { }
+                    userMediaClient = null;
+                    return null;
+                }
+            }
+        }
+
+        private static void RunUserMediaWorker(string[] args)
+        {
+            isUserMediaWorkerProcess = true;
+            int port = 0;
+            int.TryParse(args[1], out port);
+            string secret = args[2];
+            int parentPid = 0;
+            int.TryParse(args[3], out parentPid);
+            if (port <= 0 || string.IsNullOrEmpty(secret)) return;
+
+            Thread parentWatch = new Thread(() =>
+            {
+                while (true)
+                {
+                    Thread.Sleep(2500);
+                    if (parentPid > 0)
+                    {
+                        try
+                        {
+                            var p = Process.GetProcessById(parentPid);
+                            if (p == null || p.HasExited) Environment.Exit(0);
+                        }
+                        catch { Environment.Exit(0); }
+                    }
+                }
+            }) { IsBackground = true };
+            parentWatch.Start();
+
+            try
+            {
+                using (var client = new System.Net.Sockets.TcpClient())
+                {
+                    client.NoDelay = true;
+                    client.Connect(System.Net.IPAddress.Loopback, port);
+                    using (var ns = client.GetStream())
+                    using (var sr = new StreamReader(ns, new UTF8Encoding(false)))
+                    using (var sw = new StreamWriter(ns, new UTF8Encoding(false)) { AutoFlush = true })
+                    {
+                        sw.WriteLine("HELLO " + secret);
+                        string line;
+                        while ((line = sr.ReadLine()) != null)
+                        {
+                            try
+                            {
+                                var req = serializer.Deserialize<Dictionary<string, object>>(line);
+                                string op = req != null && req.ContainsKey("op") ? Convert.ToString(req["op"]) : "snapshot";
+                                if (op == "cmd")
+                                {
+                                    string key = req.ContainsKey("key") ? Convert.ToString(req["key"]) : "MEDIA_PLAY_PAUSE";
+                                    ExecuteMediaCommand(key);
+                                }
+                                double? seek = null;
+                                if (req != null && req.ContainsKey("seek") && req["seek"] != null)
+                                {
+                                    seek = Convert.ToDouble(req["seek"]);
+                                }
+                                string hint = req != null && req.ContainsKey("hint") ? Convert.ToString(req["hint"]) : null;
+                                var snaps = GetGsmtcSessionsSnapshot(seek, hint);
+                                var outList = new List<Dictionary<string, object>>();
+                                foreach (var s in snaps)
+                                {
+                                    outList.Add(new Dictionary<string, object>
+                                    {
+                                        { "AppId", s.AppId ?? "" },
+                                        { "Title", s.Title ?? "" },
+                                        { "Artist", s.Artist ?? "" },
+                                        { "IsPlaying", s.IsPlaying },
+                                        { "PositionSec", s.PositionSec },
+                                        { "DurationSec", s.DurationSec },
+                                        { "IsCurrent", s.IsCurrent }
+                                    });
+                                }
+                                sw.WriteLine(serializer.Serialize(new Dictionary<string, object> { { "ok", true }, { "sessions", outList } }));
+                            }
+                            catch (Exception ex)
+                            {
+                                sw.WriteLine(serializer.Serialize(new Dictionary<string, object> { { "ok", false }, { "error", ex.Message }, { "sessions", new object[0] } }));
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
 
         // The "now playing" item must not jump between apps/tabs when the user pauses (the audio meter goes
         // silent on pause, so picking by loudness flipped titles, durations and the play button). Windows'
         // media session list is the source of truth; the previously shown session stays selected while it exists.
-        private static GsmtcMediaSnapshot PickNowPlayingSession(List<GsmtcMediaSnapshot> list)
+        private static GsmtcMediaSnapshot PickNowPlayingSession(List<GsmtcMediaSnapshot> list, string audibleProcName = null)
         {
             if (list == null || list.Count == 0) return null;
             lock (mediaSelectLock)
             {
-                GsmtcMediaSnapshot sticky = null, stickyApp = null, current = null, firstPlaying = null;
+                GsmtcMediaSnapshot sticky = null, stickyApp = null, current = null, firstPlaying = null, audibleMatch = null;
                 foreach (var s in list)
                 {
                     if (sticky == null && s.AppId == stickyMediaAppId && s.Title == stickyMediaTitle) sticky = s;
                     if (stickyApp == null && s.AppId == stickyMediaAppId) stickyApp = s;
                     if (current == null && s.IsCurrent) current = s;
                     if (firstPlaying == null && s.IsPlaying) firstPlaying = s;
+                    if (audibleMatch == null && !string.IsNullOrEmpty(audibleProcName))
+                    {
+                        string friendly = FriendlyMediaAppName(s.AppId);
+                        if (s.AppId.IndexOf(audibleProcName, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            friendly.IndexOf(audibleProcName, StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            audibleMatch = s;
+                        }
+                    }
                 }
                 GsmtcMediaSnapshot pick;
                 var stickyAny = sticky ?? stickyApp;
-                if (stickyAny != null && stickyAny.IsPlaying) pick = stickyAny;
+                if (audibleMatch != null && audibleMatch.IsPlaying) pick = audibleMatch;
+                else if (stickyAny != null && stickyAny.IsPlaying) pick = stickyAny;
                 else if (firstPlaying != null) pick = (current != null && current.IsPlaying) ? current : firstPlaying; // something else started playing
+                else if (audibleMatch != null) pick = audibleMatch;
                 else pick = stickyAny ?? current ?? list[0];
                 stickyMediaAppId = pick.AppId;
                 stickyMediaTitle = pick.Title;
@@ -5487,9 +5942,17 @@ namespace TahaBLT
         // Play/pause/next/previous on the exact session the phone is showing (falls back to media keys)
         private static void ExecuteMediaCommand(string key)
         {
+            if (!isUserMediaWorkerProcess && IsRunningAsSystemAccount())
+            {
+                var workerRes = QueryUserMediaWorker(null, null, key);
+                if (workerRes != null && workerRes.Count > 0)
+                {
+                    return;
+                }
+            }
             var list = GetGsmtcSessionsSnapshot();
             var pick = PickNowPlayingSession(list);
-            if (pick == null || pick.SessionObj == null)
+            if (pick == null || pick.SessionObj == null || pick.SessionObj is string)
             {
                 lastMediaKeySentTick = Environment.TickCount;
                 SendKeyCombo(key);
@@ -5531,6 +5994,14 @@ namespace TahaBLT
 
         private static List<GsmtcMediaSnapshot> GetGsmtcSessionsSnapshot(double? seekPositionSec = null, string targetProcHint = null)
         {
+            if (!isUserMediaWorkerProcess && IsRunningAsSystemAccount())
+            {
+                var workerSnaps = QueryUserMediaWorker(seekPositionSec, targetProcHint, null);
+                if (workerSnaps != null)
+                {
+                    return workerSnaps;
+                }
+            }
             var result = new List<GsmtcMediaSnapshot>();
             try
             {
@@ -6280,7 +6751,10 @@ namespace TahaBLT
                 // the same session, so pausing never swaps in another app's duration or position.
                 try
                 {
-                    var pick = PickNowPlayingSession(GetGsmtcSessionsSnapshot());
+                    string audibleProcHint = bestAudibleCandidate != null && bestAudibleCandidate.ContainsKey("processName")
+                        ? Convert.ToString(bestAudibleCandidate["processName"] ?? "")
+                        : null;
+                    var pick = PickNowPlayingSession(GetGsmtcSessionsSnapshot(), audibleProcHint);
                     if (pick != null)
                     {
                         string songTitle = pick.Title ?? "";
@@ -6296,10 +6770,11 @@ namespace TahaBLT
                                 appFriendly.IndexOf(raw, StringComparison.OrdinalIgnoreCase) >= 0)) { audioMatch = sess; break; }
                         }
 
+                        bool effectivePlaying = pick.IsPlaying || (audioMatch != null && Convert.ToBoolean(audioMatch["isActive"]));
                         finalMedia = new Dictionary<string, object>
                         {
                             { "active", true },
-                            { "isPlaying", pick.IsPlaying },
+                            { "isPlaying", effectivePlaying },
                             { "title", string.IsNullOrWhiteSpace(songTitle) ? appFriendly : songTitle },
                             { "appName", appFriendly },
                             { "processName", audioMatch != null ? Convert.ToString(audioMatch["rawProcessName"]) : appFriendly },
@@ -6314,6 +6789,52 @@ namespace TahaBLT
                 catch { }
                 if (!finalMedia.ContainsKey("positionSec")) finalMedia["positionSec"] = 0.0;
                 if (!finalMedia.ContainsKey("durationSec")) finalMedia["durationSec"] = 0.0;
+
+                // Continuous elapsed playback counter when a stream/app does not expose GSMTC timeline duration
+                // (e.g., live streams or non-GSMTC desktop players) so the bar never snaps back to 00:00 every 5s.
+                try
+                {
+                    bool fmActive = finalMedia.ContainsKey("active") && Convert.ToBoolean(finalMedia["active"]);
+                    bool fmPlaying = finalMedia.ContainsKey("isPlaying") && Convert.ToBoolean(finalMedia["isPlaying"]);
+                    double fmPos = Convert.ToDouble(finalMedia["positionSec"]);
+                    double fmDur = Convert.ToDouble(finalMedia["durationSec"]);
+                    string fmKey = Convert.ToString(finalMedia["processName"] ?? "") + "|" + Convert.ToString(finalMedia["title"] ?? "");
+
+                    if (!fmActive || string.IsNullOrWhiteSpace(fmKey) || fmKey == "|")
+                    {
+                        fallbackMediaTrackKey = "";
+                        fallbackMediaPosSec = 0.0;
+                        fallbackMediaLastUtc = DateTimeOffset.MinValue;
+                    }
+                    else if (fmDur <= 0.0 && fmPos <= 0.0)
+                    {
+                        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+                        if (!string.Equals(fallbackMediaTrackKey, fmKey, StringComparison.Ordinal))
+                        {
+                            fallbackMediaTrackKey = fmKey;
+                            fallbackMediaPosSec = 0.0;
+                            fallbackMediaLastUtc = nowUtc;
+                        }
+                        else if (fmPlaying && fallbackMediaLastUtc != DateTimeOffset.MinValue)
+                        {
+                            double dt = (nowUtc - fallbackMediaLastUtc).TotalSeconds;
+                            if (dt > 0 && dt < 60) fallbackMediaPosSec += dt;
+                            fallbackMediaLastUtc = nowUtc;
+                        }
+                        else
+                        {
+                            fallbackMediaLastUtc = nowUtc;
+                        }
+                        finalMedia["positionSec"] = Math.Round(fallbackMediaPosSec, 1);
+                    }
+                    else
+                    {
+                        fallbackMediaTrackKey = fmKey;
+                        fallbackMediaPosSec = fmPos;
+                        fallbackMediaLastUtc = DateTimeOffset.UtcNow;
+                    }
+                }
+                catch { }
 
                 int micVol = 100;
                 bool micMuted = false;
