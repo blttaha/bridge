@@ -1825,6 +1825,22 @@ async function executeMacro(macro) {
     if (stepType === 'delay') {
       const ms = Math.max(10, Math.min(30000, Number(step.value || 100)));
       await new Promise((r) => setTimeout(r, ms));
+    } else if (stepType === 'system_action') {
+      const actionCode = String(step.value || '').trim();
+      if (actionCode) {
+        await executeSystemActionCode(actionCode).catch(() => {});
+      }
+      if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
+        await new Promise((r) => setTimeout(r, 80));
+      }
+    } else if (stepType === 'app') {
+      const launchPath = String(step.value || '').trim();
+      if (launchPath) {
+        await launchApplication({ name: step.label || launchPath, launchPath, args: step.args || '' }).catch(() => {});
+      }
+      if (i < steps.length - 1 && String((steps[i + 1] || {}).type) !== 'delay') {
+        await new Promise((r) => setTimeout(r, 120));
+      }
     } else if (stepType === 'text') {
       const txt = String(step.value || '');
       if (txt) {

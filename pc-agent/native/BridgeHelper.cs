@@ -1501,6 +1501,41 @@ namespace TahaBLT
             return GetMonitorsList();
         }
 
+        private static void EnsureWindowsTaskbarHealthy()
+        {
+            try
+            {
+                IntPtr mainTray = FindWindow("Shell_TrayWnd", null);
+                if (mainTray == IntPtr.Zero)
+                {
+                    int dummyPid;
+                    string expPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+                    if (!IsRunningAsSystemAccount() || !TryStartProcessInActiveUserSession(expPath, "", null, "normal", out dummyPid))
+                    {
+                        Process.Start(new ProcessStartInfo(expPath) { UseShellExecute = true });
+                    }
+                    return;
+                }
+
+                ShowWindow(mainTray, SW_SHOW);
+                SetWindowPos(mainTray, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+                EnumWindows((hWnd, lParam) =>
+                {
+                    StringBuilder sbCls = new StringBuilder(128);
+                    if (GetClassName(hWnd, sbCls, sbCls.Capacity) <= 0) return true;
+                    string cls = sbCls.ToString();
+                    if (cls == "Shell_SecondaryTrayWnd" || cls == "Shell_TrayWnd")
+                    {
+                        ShowWindow(hWnd, SW_SHOW);
+                        SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                    }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch { }
+        }
+
         private static object HandleDisplayTopology(Dictionary<string, object> args)
         {
             string mode = args.ContainsKey("mode") ? Convert.ToString(args["mode"]) : "extend";
@@ -1516,6 +1551,15 @@ namespace TahaBLT
                 CreateNoWindow = true,
                 UseShellExecute = false
             });
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                Thread.Sleep(1800);
+                if (!isPcLocked) EnsureWindowsTaskbarHealthy();
+                Thread.Sleep(1500);
+                if (!isPcLocked) EnsureWindowsTaskbarHealthy();
+            });
+
             return new { mode = mode, applied = true };
         }
 
@@ -4537,83 +4581,29 @@ namespace TahaBLT
             {
                 if (hideOverlays)
                 {
-                    string[] shellClasses = new[]
+                    // Push taskbars to bottom of Z-order (never SW_HIDE or WM_CLOSE them, which breaks Windows 11 XAML taskbar!)
+                    IntPtr mainTray = FindWindow("Shell_TrayWnd", null);
+                    if (mainTray != IntPtr.Zero)
                     {
-                        "Shell_TrayWnd",
-                        "Shell_SecondaryTrayWnd",
-                        "NotifyIconOverflowWindow",
-                        "TopLevelWindowForOverflowXamlIsland",
-                        "XamlExplorerHostIslandWindow"
-                    };
-                    foreach (string cls in shellClasses)
-                    {
-                        IntPtr hw = FindWindow(cls, null);
-                        if (hw != IntPtr.Zero && IsWindowVisible(hw))
-                        {
-                            ShowWindow(hw, SW_HIDE);
-                            if ((cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd") && !hiddenShellWindowsDuringLock.Contains(hw))
-                            {
-                                hiddenShellWindowsDuringLock.Add(hw);
-                            }
-                        }
+                        SetWindowPos(mainTray, new IntPtr(1) /* HWND_BOTTOM */, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                     }
-
-                    // Also enumerate top-level windows to catch multi-monitor secondary taskbars & Windows toast/action center popups
                     EnumWindows((hWnd, lParam) =>
                     {
                         if (!IsWindowVisible(hWnd)) return true;
                         StringBuilder sbCls = new StringBuilder(128);
                         if (GetClassName(hWnd, sbCls, sbCls.Capacity) <= 0) return true;
                         string clsName = sbCls.ToString();
-
                         if (clsName == "Shell_SecondaryTrayWnd" || clsName == "Shell_TrayWnd")
                         {
-                            ShowWindow(hWnd, SW_HIDE);
-                            if (!hiddenShellWindowsDuringLock.Contains(hWnd))
-                                hiddenShellWindowsDuringLock.Add(hWnd);
-                        }
-                        else if (clsName == "Windows.UI.Core.CoreWindow" ||
-                                 clsName == "XamlExplorerHostIslandWindow" ||
-                                 clsName == "TopLevelWindowForOverflowXamlIsland")
-                        {
-                            uint pid = 0;
-                            GetWindowThreadProcessId(hWnd, out pid);
-                            if (pid != 0)
-                            {
-                                try
-                                {
-                                    string pName = Process.GetProcessById((int)pid).ProcessName;
-                                    if (pName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase) ||
-                                        pName.Equals("StartMenuExperienceHost", StringComparison.OrdinalIgnoreCase) ||
-                                        pName.Equals("SearchHost", StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        PostMessage(hWnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
-                                        ShowWindow(hWnd, SW_HIDE);
-                                    }
-                                }
-                                catch { }
-                            }
+                            SetWindowPos(hWnd, new IntPtr(1) /* HWND_BOTTOM */, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                         }
                         return true;
                     }, IntPtr.Zero);
                 }
                 else
                 {
-                    foreach (IntPtr hw in hiddenShellWindowsDuringLock)
-                    {
-                        try
-                        {
-                            if (hw != IntPtr.Zero)
-                                ShowWindow(hw, SW_SHOW);
-                        }
-                        catch { }
-                    }
                     hiddenShellWindowsDuringLock.Clear();
-
-                    IntPtr mainTray = FindWindow("Shell_TrayWnd", null);
-                    if (mainTray != IntPtr.Zero) ShowWindow(mainTray, SW_SHOW);
-                    IntPtr secTray = FindWindow("Shell_SecondaryTrayWnd", null);
-                    if (secTray != IntPtr.Zero) ShowWindow(secTray, SW_SHOW);
+                    EnsureWindowsTaskbarHealthy();
                 }
             }
             catch { }

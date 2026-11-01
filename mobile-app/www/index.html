@@ -230,7 +230,7 @@
 
                 <div class="setting-action-row">
                   <div class="setting-meta">
-                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.2</span>
+                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.3</span>
                     <span class="setting-desc" id="updateStatusCaption">GitHub (blttaha/bridge) üzerinden mobil ve masaüstü sürümlerini denetleyin</span>
                   </div>
                   <button type="button" class="btn-compact btn-secondary" id="btnCheckUpdatesSetting">Denetle</button>
@@ -414,12 +414,12 @@
             <div class="scenes-grid hidden" id="scenesListContainer"></div>
           </div>
 
-          <div class="section-block" data-layout-id="macros_list" data-layout-label="Makrolar ve Tuş Atamaları">
+          <div class="section-block" data-layout-id="macros_list" data-layout-label="Makrolar">
             <div class="section-header-stack">
               <div class="section-header-top">
-                <h2 class="section-title">Makrolar ve Tuş Atamaları</h2>
+                <h2 class="section-title">Makrolar</h2>
                 <div class="header-btn-group">
-                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="newMacroBtn" title="Yeni Makro Kaydet" aria-label="Yeni Makro">
+                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="newMacroBtn" title="Yeni Makro Oluştur" aria-label="Yeni Makro">
                     <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M9 3.5v11M3.5 9h11" stroke-linecap="round" />
                     </svg>
@@ -427,14 +427,14 @@
                 </div>
               </div>
               <p class="section-subtitle">
-                Ardışık klavye kısayolları, tuş kombinasyonları ve otomatik metin dizileri
+                Telefondan tek dokunuşla çalıştırabileceğiniz çok adımlı tuş, sistem ve metin zincirleri
               </p>
             </div>
 
             <div class="empty-state-box" id="macrosEmptyState">
               <h3 class="empty-title">Henüz kayıtlı makro yok</h3>
               <p class="empty-desc">
-                Tek dokunuşla tuş kombinasyonları, gecikmeli kısayol zincirleri veya metin komutları göndermek için sağ üstteki artı butonuna dokunun.
+                Telefondan tek dokunuşla ardışık klavye tuşları, sistem eylemleri veya otomatik metin dizileri çalıştırmak için sağ üstteki artı butonuna dokunun.
               </p>
             </div>
 
@@ -443,46 +443,44 @@
         </section>
 
         <!-- TAB 3: UYGULAMALAR (TÜM TESPİT EDİLEN VE ELLE EKLENEN UYGULAMALAR) -->
-        <section class="tab-panel" id="tab-apps">
-          <div class="section-block" data-layout-container="tab-apps">
-            <div class="section-header-stack" data-layout-id="apps_header" data-layout-label="Uygulamalar Başlığı">
-              <div class="section-header-top">
-                <h1 class="section-title-lg">Uygulamalar</h1>
-                <div class="header-btn-group">
-                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="openAddCustomAppBtn" title="Uygulama Ekle" aria-label="Uygulama Ekle">
-                    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <path d="M9 3.5v11M3.5 9h11" stroke-linecap="round" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <p class="section-subtitle" id="appsCountSubtitle">
-                Dokunarak başlatın, özellikler için basılı tutun veya bilgi simgesine dokunun
-              </p>
-            </div>
-
-            <div class="apps-toolbar-stack" data-layout-id="apps_search" data-layout-label="Uygulama Arama Çubuğu">
-              <div class="apps-search-box">
-                <svg class="apps-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <circle cx="9" cy="9" r="5.5" />
-                  <path d="M13.2 13.2L17 17" stroke-linecap="round" />
-                </svg>
-                <input
-                  type="text"
-                  class="input-field apps-search-input"
-                  id="appsTabSearchInput"
-                  placeholder="Uygulama ve işlem ara..."
-                  autocomplete="off"
-                />
+        <section class="tab-panel" id="tab-apps" data-layout-container="tab-apps">
+          <div class="section-header-stack" data-layout-id="apps_header" data-layout-label="Uygulamalar Başlığı">
+            <div class="section-header-top">
+              <h1 class="section-title-lg">Uygulamalar</h1>
+              <div class="header-btn-group">
+                <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="openAddCustomAppBtn" title="Uygulama Ekle" aria-label="Uygulama Ekle">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M9 3.5v11M3.5 9h11" stroke-linecap="round" />
+                  </svg>
+                </button>
               </div>
             </div>
-
-            <div class="apps-catalog-grid" id="appsCatalogGrid" data-layout-id="apps_catalog" data-layout-label="Uygulama Listesi"></div>
+            <p class="section-subtitle" id="appsCountSubtitle">
+              Dokunarak başlatın, özellikler için basılı tutun veya bilgi simgesine dokunun
+            </p>
           </div>
+
+          <div class="apps-toolbar-stack" data-layout-id="apps_search" data-layout-label="Uygulama Arama Çubuğu">
+            <div class="apps-search-box">
+              <svg class="apps-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <circle cx="9" cy="9" r="5.5" />
+                <path d="M13.2 13.2L17 17" stroke-linecap="round" />
+              </svg>
+              <input
+                type="text"
+                class="input-field apps-search-input"
+                id="appsTabSearchInput"
+                placeholder="Uygulama ve işlem ara..."
+                autocomplete="off"
+              />
+            </div>
+          </div>
+
+          <div class="apps-catalog-grid" id="appsCatalogGrid" data-layout-id="apps_catalog" data-layout-label="Uygulama Listesi"></div>
         </section>
 
         <!-- TAB 4: KONTROL (EKRANSIZ MOUSE/TOUCHPAD, CANLI MASAÜSTÜ, EKRANLAR & PENCERELER) -->
-        <section class="tab-panel" id="tab-remote" data-layout-container="tab-remote">
+        <section class="tab-panel is-remote-screen-off" id="tab-remote" data-layout-container="tab-remote">
           <div class="remote-workstation is-screen-off" id="remoteWorkstation" data-layout-id="remote_workstation" data-layout-label="Touchpad ve Canlı Ekran">
             <!-- Top Remote Bar: Monitor Switcher + Stream Toggle + Mouse/Touch Mode + Fullscreen & Keyboard -->
             <div class="remote-header-bar">
@@ -584,77 +582,80 @@
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Pro Keyboard & Shortcut Deck -->
-            <div class="keyboard-panel">
-              <form class="remote-text-form" id="remoteTextForm">
-                <input
-                  type="text"
-                  class="input-field"
-                  id="remoteTextInput"
-                  placeholder="Bilgisayara metin yazın veya yapıştırın..."
-                  autocomplete="off"
-                />
-                <button type="submit" class="btn-primary btn-compact">Yazdır</button>
-              </form>
+          <!-- GRANULAR ITEM: PC METİN YAZDIRMA FORMU -->
+          <div class="layout-widget-card remote-screen-only-widget" id="remoteTextFormWidget" data-layout-id="remote_text_form" data-layout-label="Bilgisayara Metin Yazdır">
+            <form class="remote-text-form" id="remoteTextForm">
+              <input
+                type="text"
+                class="input-field"
+                id="remoteTextInput"
+                placeholder="Bilgisayara metin yazın veya yapıştırın..."
+                autocomplete="off"
+              />
+              <button type="submit" class="btn-primary btn-compact">Yazdır</button>
+            </form>
+          </div>
 
-              <div class="kbd-category-tabs">
-                <button type="button" class="kbd-cat-btn active" data-kbd-cat="basic">Temel</button>
-                <button type="button" class="kbd-cat-btn" data-kbd-cat="edit">Düzen</button>
-                <button type="button" class="kbd-cat-btn" data-kbd-cat="nav">Yön</button>
-              </div>
+          <!-- GRANULAR ITEM: KLAVYE KISAYOL TUŞ TAKIMI -->
+          <div class="layout-widget-card remote-screen-only-widget" id="remoteHotkeyDeckWidget" data-layout-id="remote_hotkey_deck" data-layout-label="Klavye Kısayol Tuşları">
+            <div class="kbd-category-tabs">
+              <button type="button" class="kbd-cat-btn active" data-kbd-cat="basic">Temel</button>
+              <button type="button" class="kbd-cat-btn" data-kbd-cat="edit">Düzen</button>
+              <button type="button" class="kbd-cat-btn" data-kbd-cat="nav">Yön</button>
+            </div>
 
-              <!-- Category 1: Basic & Window -->
-              <div class="hotkey-grid" id="kbdGridBasic">
-                <button type="button" class="kbd-btn" data-key="ESC">ESC</button>
-                <button type="button" class="kbd-btn" data-key="TAB">TAB</button>
-                <button type="button" class="kbd-btn" data-key="WIN">WIN</button>
-                <button type="button" class="kbd-btn" data-key="ALT+TAB">ALT+TAB</button>
-                <button type="button" class="kbd-btn" data-key="BACKSPACE">SİL</button>
-                <button type="button" class="kbd-btn" data-key="ENTER">ENTER</button>
-                <button type="button" class="kbd-btn" data-key="SPACE">BOŞLUK</button>
-                <button type="button" class="kbd-btn" data-key="WIN+D">MASAÜSTÜ</button>
-                <button type="button" class="kbd-btn" data-key="F11">TAM EKRAN</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+SHIFT+ESC">GÖREV YÖN.</button>
-                <button type="button" class="kbd-btn" data-key="DELETE">DEL</button>
-                <button type="button" class="kbd-btn kbd-danger" data-key="ALT+F4">ALT+F4</button>
-              </div>
+            <!-- Category 1: Basic & Window -->
+            <div class="hotkey-grid" id="kbdGridBasic">
+              <button type="button" class="kbd-btn" data-key="ESC">ESC</button>
+              <button type="button" class="kbd-btn" data-key="TAB">TAB</button>
+              <button type="button" class="kbd-btn" data-key="WIN">WIN</button>
+              <button type="button" class="kbd-btn" data-key="ALT+TAB">ALT+TAB</button>
+              <button type="button" class="kbd-btn" data-key="BACKSPACE">SİL</button>
+              <button type="button" class="kbd-btn" data-key="ENTER">ENTER</button>
+              <button type="button" class="kbd-btn" data-key="SPACE">BOŞLUK</button>
+              <button type="button" class="kbd-btn" data-key="WIN+D">MASAÜSTÜ</button>
+              <button type="button" class="kbd-btn" data-key="F11">TAM EKRAN</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+SHIFT+ESC">GÖREV YÖN.</button>
+              <button type="button" class="kbd-btn" data-key="DELETE">DEL</button>
+              <button type="button" class="kbd-btn kbd-danger" data-key="ALT+F4">ALT+F4</button>
+            </div>
 
-              <!-- Category 2: Edit & Clipboard Shortcuts -->
-              <div class="hotkey-grid hidden" id="kbdGridEdit">
-                <button type="button" class="kbd-btn" data-key="CTRL+C">KOPYALA</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+V">YAPIŞTIR</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+X">KES</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+Z">GERİ AL</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+A">TÜMÜNÜ SEÇ</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+S">KAYDET</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+W">SEKME KAPAT</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+T">YENİ SEKME</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+F">BUL</button>
-                <button type="button" class="kbd-btn" data-key="CTRL+R">YENİLE</button>
-                <button type="button" class="kbd-btn" data-key="WIN+L">KİLİTLE</button>
-                <button type="button" class="kbd-btn" data-key="WIN+SHIFT+S">EKRAN ALINTI</button>
-              </div>
+            <!-- Category 2: Edit & Clipboard Shortcuts -->
+            <div class="hotkey-grid hidden" id="kbdGridEdit">
+              <button type="button" class="kbd-btn" data-key="CTRL+C">KOPYALA</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+V">YAPIŞTIR</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+X">KES</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+Z">GERİ AL</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+A">TÜMÜNÜ SEÇ</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+S">KAYDET</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+W">SEKME KAPAT</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+T">YENİ SEKME</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+F">BUL</button>
+              <button type="button" class="kbd-btn" data-key="CTRL+R">YENİLE</button>
+              <button type="button" class="kbd-btn" data-key="WIN+L">KİLİTLE</button>
+              <button type="button" class="kbd-btn" data-key="WIN+SHIFT+S">EKRAN ALINTI</button>
+            </div>
 
-              <!-- Category 3: Navigation & Function Keys -->
-              <div class="hotkey-grid hidden" id="kbdGridNav">
-                <button type="button" class="kbd-btn" data-key="LEFT">SOL</button>
-                <button type="button" class="kbd-btn" data-key="UP">YUKARI</button>
-                <button type="button" class="kbd-btn" data-key="DOWN">AŞAĞI</button>
-                <button type="button" class="kbd-btn" data-key="RIGHT">SAĞ</button>
-                <button type="button" class="kbd-btn" data-key="PGUP">SAYFA YUKARI</button>
-                <button type="button" class="kbd-btn" data-key="PGDN">SAYFA AŞAĞI</button>
-                <button type="button" class="kbd-btn" data-key="HOME">BAŞA (HOME)</button>
-                <button type="button" class="kbd-btn" data-key="END">SONA (END)</button>
-                <button type="button" class="kbd-btn" data-key="F2">F2</button>
-                <button type="button" class="kbd-btn" data-key="F5">F5</button>
-                <button type="button" class="kbd-btn" data-key="F10">F10</button>
-                <button type="button" class="kbd-btn" data-key="F12">F12</button>
-              </div>
+            <!-- Category 3: Navigation & Function Keys -->
+            <div class="hotkey-grid hidden" id="kbdGridNav">
+              <button type="button" class="kbd-btn" data-key="LEFT">SOL</button>
+              <button type="button" class="kbd-btn" data-key="UP">YUKARI</button>
+              <button type="button" class="kbd-btn" data-key="DOWN">AŞAĞI</button>
+              <button type="button" class="kbd-btn" data-key="RIGHT">SAĞ</button>
+              <button type="button" class="kbd-btn" data-key="PGUP">SAYFA YUKARI</button>
+              <button type="button" class="kbd-btn" data-key="PGDN">SAYFA AŞAĞI</button>
+              <button type="button" class="kbd-btn" data-key="HOME">BAŞA (HOME)</button>
+              <button type="button" class="kbd-btn" data-key="END">SONA (END)</button>
+              <button type="button" class="kbd-btn" data-key="F2">F2</button>
+              <button type="button" class="kbd-btn" data-key="F5">F5</button>
+              <button type="button" class="kbd-btn" data-key="F10">F10</button>
+              <button type="button" class="kbd-btn" data-key="F12">F12</button>
             </div>
           </div>
 
-          <!-- EKRANLAR & CANLI PENCERELER (MERGED INTO KONTROL TAB BELOW REMOTE WORKSTATION) -->
+          <!-- GRANULAR ITEM: MONİTÖR TOPOLOJİSİ KARTLARI -->
           <div class="section-block control-monitors-section" data-layout-id="remote_monitors" data-layout-label="Monitör Topolojisi">
             <div class="section-header-stack">
               <div class="section-header-top">
@@ -677,20 +678,22 @@
             </div>
 
             <div class="monitors-topology-grid" id="monitorsContainer"></div>
+          </div>
 
-            <div class="sub-panel">
-              <div class="sub-panel-header">
-                <span class="sub-panel-title">Windows Görüntü Yansıtma Modu</span>
-              </div>
-              <div class="segmented-row">
-                <button type="button" class="segment-btn" data-topology="extend">Uzat (Çift Ekran)</button>
-                <button type="button" class="segment-btn" data-topology="internal">Sadece 1. Ekran</button>
-                <button type="button" class="segment-btn" data-topology="external">Sadece 2. Ekran</button>
-                <button type="button" class="segment-btn" data-topology="clone">Yinele</button>
-              </div>
+          <!-- GRANULAR ITEM: WINDOWS GÖRÜNTÜ YANSITMA MODU -->
+          <div class="sub-panel layout-standalone-subpanel" data-layout-id="remote_display_mode" data-layout-label="Görüntü Yansıtma Modu">
+            <div class="sub-panel-header">
+              <span class="sub-panel-title">Windows Görüntü Yansıtma Modu</span>
+            </div>
+            <div class="segmented-row">
+              <button type="button" class="segment-btn" data-topology="extend">Uzat (Çift Ekran)</button>
+              <button type="button" class="segment-btn" data-topology="internal">Sadece 1. Ekran</button>
+              <button type="button" class="segment-btn" data-topology="external">Sadece 2. Ekran</button>
+              <button type="button" class="segment-btn" data-topology="clone">Yinele</button>
             </div>
           </div>
 
+          <!-- GRANULAR ITEM: AÇIK PENCERELER -->
           <div class="section-block" data-layout-id="remote_windows" data-layout-label="Açık Pencereler">
             <div class="section-header-row">
               <div>
@@ -709,7 +712,8 @@
 
         <!-- TAB 5: SİSTEM, SES MİKSERİ, ZAMANLAYICI & GÜÇ -->
         <section class="tab-panel" id="tab-system" data-layout-container="tab-system">
-          <div class="section-block" data-layout-id="sys_audio" data-layout-label="Ses ve Medya Mikseri">
+          <!-- GRANULAR ITEM 1: ANA SİSTEM SESİ VE MİKSER -->
+          <div class="section-block" data-layout-id="sys_audio_master" data-layout-label="Ana Sistem Sesi">
             <div class="section-header-row">
               <div>
                 <h1 class="section-title-lg">Ses ve Medya Mikseri</h1>
@@ -757,45 +761,52 @@
                 <label class="audio-device-label" for="audioOutputDeviceSelect">Çıkış Cihazı</label>
                 <select class="input-field audio-device-select" id="audioOutputDeviceSelect"></select>
               </div>
+            </div>
+          </div>
 
-              <!-- Live Now Playing Media Card (Synced with Android Notification Bar) -->
-              <div class="now-playing-banner" id="nowPlayingBanner">
-                <div class="now-playing-icon-wrap" id="nowPlayingIconBox">
-                  <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                    <circle cx="10" cy="10" r="7" />
-                    <path d="M8.5 7.5l4.5 2.5-4.5 2.5v-5z" stroke-linejoin="round" />
-                  </svg>
-                </div>
-                <div class="now-playing-meta">
-                  <span class="now-playing-title" id="nowPlayingTitle">Medya Bekleniyor</span>
-                </div>
+          <!-- GRANULAR ITEM 2: ÇALAN MEDYA BİLGİSİ (SADECE ŞARKI KARTI TAŞINABİLİR) -->
+          <div class="audio-standalone-card" data-layout-id="sys_media_now_playing" data-layout-label="Çalan Medya Bilgisi">
+            <div class="now-playing-banner" id="nowPlayingBanner">
+              <div class="now-playing-icon-wrap" id="nowPlayingIconBox">
+                <svg class="sys-pack-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <circle cx="10" cy="10" r="7" />
+                  <path d="M8.5 7.5l4.5 2.5-4.5 2.5v-5z" stroke-linejoin="round" />
+                </svg>
               </div>
+              <div class="now-playing-meta">
+                <span class="now-playing-title" id="nowPlayingTitle">Medya Bekleniyor</span>
+              </div>
+            </div>
+          </div>
 
-              <!-- Live Synced Media Seek Timeline -->
-              <div class="media-timeline-row" id="mediaTimelineRow">
-                <span class="media-time-label" id="mediaCurrentTime">00:00</span>
-                <input type="range" class="volume-slider media-seek-slider" id="mediaSeekSlider" min="0" max="100" value="0" />
-                <span class="media-time-label" id="mediaTotalTime">00:00</span>
-              </div>
+          <!-- GRANULAR ITEM 3: MEDYA İLERLEME ÇUBUĞU (SADECE SÜRE ÇUBUĞU TAŞINABİLİR) -->
+          <div class="audio-standalone-card" data-layout-id="sys_media_timeline" data-layout-label="Medya İlerleme Çubuğu">
+            <div class="media-timeline-row" id="mediaTimelineRow">
+              <span class="media-time-label" id="mediaCurrentTime">00:00</span>
+              <input type="range" class="volume-slider media-seek-slider" id="mediaSeekSlider" min="0" max="100" value="0" />
+              <span class="media-time-label" id="mediaTotalTime">00:00</span>
+            </div>
+          </div>
 
-              <div class="media-transport-row">
-                <button type="button" class="transport-btn" data-key="MEDIA_PREV" title="Önceki Parça" aria-label="Önceki Parça">
-                  <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
-                    <path d="M5.5 5v10M14.5 5L8 10l6.5 5V5z" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                </button>
-                <button type="button" class="transport-btn transport-btn-main" data-key="MEDIA_PLAY_PAUSE" title="Oynat / Duraklat" aria-label="Oynat / Duraklat">
-                  <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
-                    <path d="M5.5 4.5l7 5.5-7 5.5V4.5z" stroke-linejoin="round" />
-                    <path d="M15 5v10" stroke-linecap="round" />
-                  </svg>
-                </button>
-                <button type="button" class="transport-btn" data-key="MEDIA_NEXT" title="Sonraki Parça" aria-label="Sonraki Parça">
-                  <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
-                    <path d="M14.5 5v10M5.5 5L12 10l-6.5 5V5z" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                </button>
-              </div>
+          <!-- GRANULAR ITEM 4: OYNAT / DURAKLAT / ÖNCEKİ / SONRAKİ TUŞLARI (TEK BAŞINA TAŞINABİLİR) -->
+          <div class="audio-standalone-card" data-layout-id="sys_media_transport" data-layout-label="Oynat / Duraklat Tuşları">
+            <div class="media-transport-row">
+              <button type="button" class="transport-btn" data-key="MEDIA_PREV" title="Önceki Parça" aria-label="Önceki Parça">
+                <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <path d="M5.5 5v10M14.5 5L8 10l6.5 5V5z" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+              <button type="button" class="transport-btn transport-btn-main" data-key="MEDIA_PLAY_PAUSE" title="Oynat / Duraklat" aria-label="Oynat / Duraklat">
+                <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <path d="M5.5 4.5l7 5.5-7 5.5V4.5z" stroke-linejoin="round" />
+                  <path d="M15 5v10" stroke-linecap="round" />
+                </svg>
+              </button>
+              <button type="button" class="transport-btn" data-key="MEDIA_NEXT" title="Sonraki Parça" aria-label="Sonraki Parça">
+                <svg class="transport-svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <path d="M14.5 5v10M5.5 5L12 10l-6.5 5V5z" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -872,7 +883,8 @@
             </div>
           </div>
 
-          <div class="section-block" data-layout-id="sys_wireless" data-layout-label="Kablosuz Bağlantılar">
+          <!-- GRANULAR WIRELESS ITEMS: WI-FI, HOTSPOT, BLUETOOTH INDEPENDENTLY MOVABLE -->
+          <div class="section-block" data-layout-id="sys_wireless_wifi" data-layout-label="Wi-Fi Ağı">
             <div class="section-header-row">
               <div>
                 <h2 class="section-title">Kablosuz Bağlantılar</h2>
@@ -886,7 +898,6 @@
             </div>
 
             <div class="sub-panel wireless-control-panel">
-              <!-- Wi-Fi Row -->
               <div class="wireless-item-row">
                 <div class="wireless-item-left">
                   <div class="wireless-icon-badge" id="wifiIconBadge">
@@ -908,48 +919,50 @@
                   </label>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <!-- Mobile Hotspot Row -->
-              <div class="wireless-item-row">
-                <div class="wireless-item-left">
-                  <div class="wireless-icon-badge" id="hotspotIconBadge">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <circle cx="10" cy="10" r="2.2"/>
-                      <path d="M6.5 6.5a5 5 0 0 0 0 7M13.5 6.5a5 5 0 0 1 0 7M4 4a8.5 8.5 0 0 0 0 12M16 4a8.5 8.5 0 0 1 0 12" stroke-linecap="round"/>
-                    </svg>
-                  </div>
-                  <div class="wireless-meta">
-                    <span class="wireless-title">Mobil Erişim Noktası</span>
-                    <span class="wireless-sub" id="hotspotCurrentStatusText">Kapalı</span>
-                  </div>
+          <div class="sub-panel wireless-standalone-card" data-layout-id="sys_wireless_hotspot" data-layout-label="Mobil Erişim Noktası">
+            <div class="wireless-item-row">
+              <div class="wireless-item-left">
+                <div class="wireless-icon-badge" id="hotspotIconBadge">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <circle cx="10" cy="10" r="2.2"/>
+                    <path d="M6.5 6.5a5 5 0 0 0 0 7M13.5 6.5a5 5 0 0 1 0 7M4 4a8.5 8.5 0 0 0 0 12M16 4a8.5 8.5 0 0 1 0 12" stroke-linecap="round"/>
+                  </svg>
                 </div>
-                <div class="wireless-item-actions">
-                  <label class="switch-toggle">
-                    <input type="checkbox" id="hotspotToggleSwitch" />
-                    <span class="slider round"></span>
-                  </label>
+                <div class="wireless-meta">
+                  <span class="wireless-title">Mobil Erişim Noktası</span>
+                  <span class="wireless-sub" id="hotspotCurrentStatusText">Kapalı</span>
                 </div>
               </div>
+              <div class="wireless-item-actions">
+                <label class="switch-toggle">
+                  <input type="checkbox" id="hotspotToggleSwitch" />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+          </div>
 
-              <!-- Bluetooth Row -->
-              <div class="wireless-item-row">
-                <div class="wireless-item-left">
-                  <div class="wireless-icon-badge" id="btIconBadge">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <path d="M6 6.5l8 7-4 3.5V3l4 3.5-8 7" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </div>
-                  <div class="wireless-meta">
-                    <span class="wireless-title">Bluetooth</span>
-                    <span class="wireless-sub" id="btCurrentStatusText">Durum alınıyor...</span>
-                  </div>
+          <div class="sub-panel wireless-standalone-card" data-layout-id="sys_wireless_bt" data-layout-label="Bluetooth">
+            <div class="wireless-item-row">
+              <div class="wireless-item-left">
+                <div class="wireless-icon-badge" id="btIconBadge">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M6 6.5l8 7-4 3.5V3l4 3.5-8 7" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
                 </div>
-                <div class="wireless-item-actions">
-                  <label class="switch-toggle">
-                    <input type="checkbox" id="btToggleSwitch" />
-                    <span class="slider round"></span>
-                  </label>
+                <div class="wireless-meta">
+                  <span class="wireless-title">Bluetooth</span>
+                  <span class="wireless-sub" id="btCurrentStatusText">Durum alınıyor...</span>
                 </div>
+              </div>
+              <div class="wireless-item-actions">
+                <label class="switch-toggle">
+                  <input type="checkbox" id="btToggleSwitch" />
+                  <span class="slider round"></span>
+                </label>
               </div>
             </div>
           </div>
@@ -1058,7 +1071,9 @@
                 <span class="power-sub">Güvenli tam kapatma</span>
               </button>
             </div>
+          </div>
 
+          <div class="layout-standalone-action" data-layout-id="sys_function_prefs" data-layout-label="Özelleştirmeler Butonu">
             <button type="button" class="btn-secondary btn-full function-prefs-open-btn" id="openFunctionPrefsBtn">
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <path d="M4 6h8M15 6h1M4 14h2M9 14h7" stroke-linecap="round" />
@@ -1074,15 +1089,24 @@
       </div>
     </main>
 
-    <!-- FLOATING PAGE LAYOUT EDIT BANNER (Shown when long-pressing page sections to reorder) -->
+    <!-- FLOATING PAGE LAYOUT EDIT BANNER (Shown when long-pressing page items to reorder or move across pages) -->
     <div class="layout-edit-banner hidden" id="layoutEditBanner">
-      <div class="layout-edit-info">
-        <span class="layout-edit-dot"></span>
-        <span class="layout-edit-title">Sayfa Düzeni · Sürükleyip Taşıyın</span>
+      <div class="layout-edit-top-row">
+        <div class="layout-edit-info">
+          <span class="layout-edit-dot"></span>
+          <span class="layout-edit-title">Ögeyi Sürükleyin (Başka Sayfaya Taşımak İçin Sekmeye Bırakın)</span>
+        </div>
+        <div class="layout-edit-actions">
+          <button type="button" class="btn-secondary btn-compact" id="resetPageLayoutBtn">Sıfırla</button>
+          <button type="button" class="btn-primary btn-compact" id="donePageLayoutBtn">Tamam</button>
+        </div>
       </div>
-      <div class="layout-edit-actions">
-        <button type="button" class="btn-secondary btn-compact" id="resetPageLayoutBtn">Sıfırla</button>
-        <button type="button" class="btn-primary btn-compact" id="donePageLayoutBtn">Tamam</button>
+      <div class="layout-page-target-row" id="layoutPageTargetRow">
+        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-scenes">Hızlı Erişim</button>
+        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-macros">Makrolar</button>
+        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-apps">Uygulamalar</button>
+        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-remote">Kontrol</button>
+        <button type="button" class="layout-page-pill" data-layout-target-tab="tab-system">Sistem</button>
       </div>
     </div>
 
@@ -1699,7 +1723,7 @@
               placeholder="Bu klasörde dosya veya uzantı ara (.pdf, .exe, .mp4...)"
             />
             <button type="button" class="btn-primary btn-compact" id="fsSelectCurrentFolderBtn">
-              Bu Klasörü Seç
+              Seç
             </button>
           </div>
 
@@ -1975,13 +1999,13 @@
       </div>
     </div>
 
-    <!-- MODAL 14: MAKRO KAYDEDİCİ VE TUŞ ATAMA OLUŞTURUCU -->
+    <!-- MODAL 14: TELEFONDAN TETİKLENEN MAKRO OLUŞTURUCU -->
     <div class="modal-backdrop hidden" id="macroComposerModal">
       <div class="modal-sheet modal-sheet-large">
         <div class="modal-header">
           <div>
-            <h2 class="modal-title" id="macroModalTitle">Makro ve Tuş Atama</h2>
-            <p class="modal-subtitle">Tuş kombinasyonu, metin veya gecikme adımları kaydedin</p>
+            <h2 class="modal-title" id="macroModalTitle">Makro Oluştur</h2>
+            <p class="modal-subtitle">Uygulamadan tek dokunuşla çalıştırılacak tuş, sistem ve metin zinciri</p>
           </div>
           <button type="button" class="icon-btn" id="closeMacroModalBtn" aria-label="Kapat">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -1997,14 +2021,14 @@
               type="text"
               id="macroNameInput"
               class="input-field"
-              placeholder="Örn: Yayın Başlat / Kod Derle / Hızlı Kayıt"
+              placeholder="Örn: Yayın Başlat / Kod Derle / Gece Modu"
               autocomplete="off"
             />
           </div>
 
           <div class="rule-builder-card">
             <div class="rule-builder-header">
-              <span class="sub-panel-title">1. Tuş Ataması veya Kısayol Kaydet</span>
+              <span class="sub-panel-title">1. Klavye veya Sistem Tuşu Ekle</span>
             </div>
 
             <div class="form-group">
@@ -2018,10 +2042,23 @@
             </div>
 
             <div class="form-group">
-              <label class="form-label" for="macroBaseKeySelect">Ana Tuş</label>
+              <label class="form-label" for="macroBaseKeySelect">Tuş Seçimi</label>
               <div class="fs-path-bar">
                 <select class="input-field" id="macroBaseKeySelect">
-                  <option value="">-- Sadece Modifikasyon veya Ana Tuş Seçin --</option>
+                  <option value="">-- Modifikasyon veya Tuş Seçin --</option>
+                  <optgroup label="Sistem, Ses ve Medya Tuşları">
+                    <option value="VOLUME_UP">SES ARTIR (VOLUME UP)</option>
+                    <option value="VOLUME_DOWN">SES AZALT (VOLUME DOWN)</option>
+                    <option value="VOLUME_MUTE">SESİ SUSTUR / AÇ (MUTE)</option>
+                    <option value="MEDIA_PLAY_PAUSE">MEDYA OYNAT / DURAKLAT</option>
+                    <option value="MEDIA_NEXT">SONRAKİ PARÇA</option>
+                    <option value="MEDIA_PREV">ÖNCEKİ PARÇA</option>
+                    <option value="PRINTSCREEN">EKRAN GÖRÜNTÜSÜ (PRINT SCREEN)</option>
+                    <option value="INSERT">INSERT</option>
+                    <option value="CAPSLOCK">CAPS LOCK</option>
+                    <option value="NUMLOCK">NUM LOCK</option>
+                    <option value="PAUSE">PAUSE / BREAK</option>
+                  </optgroup>
                   <optgroup label="Sık Kullanılan Tuşlar">
                     <option value="ENTER">ENTER</option>
                     <option value="SPACE">BOŞLUK (SPACE)</option>
@@ -2033,7 +2070,7 @@
                   <optgroup label="Harfler (A - Z)">
                     <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
                     <option value="E">E</option><option value="F">F</option><option value="G">G</option><option value="H">H</option>
-                    <option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="L">L</option>
+                    <option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="K">K</option><option value="L">L</option>
                     <option value="M">M</option><option value="N">N</option><option value="O">O</option><option value="P">P</option>
                     <option value="Q">Q</option><option value="R">R</option><option value="S">S</option><option value="T">T</option>
                     <option value="U">U</option><option value="V">V</option><option value="W">W</option><option value="X">X</option>
@@ -2058,25 +2095,23 @@
                     <option value="PGUP">PAGE UP</option>
                     <option value="PGDN">PAGE DOWN</option>
                   </optgroup>
-                  <optgroup label="Medya Tuşları">
-                    <option value="MEDIA_PLAY_PAUSE">OYNAT / DURAKLAT</option>
-                    <option value="MEDIA_NEXT">SONRAKİ PARÇA</option>
-                    <option value="MEDIA_PREV">ÖNCEKİ PARÇA</option>
-                  </optgroup>
                 </select>
                 <button type="button" class="btn-primary btn-compact" id="addMacroKeyStepBtn">+ Tuş Ekle</button>
               </div>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Hızlı Kısayol Şablonları (Tek Dokunuşla Ekle)</label>
+              <label class="form-label">Hızlı Sistem Kısayolları (Tek Dokunuşla Ekle)</label>
               <div class="macro-preset-chips" id="macroPresetChips">
                 <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+C">CTRL+C</button>
                 <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+V">CTRL+V</button>
                 <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+S">CTRL+S</button>
                 <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+Z">CTRL+Z</button>
                 <button type="button" class="macro-chip-btn" data-macro-preset="ALT+TAB">ALT+TAB</button>
-                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+D">WIN+D</button>
+                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+D">MASAÜSTÜ</button>
+                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+E">DOSYA GEZGİNİ</button>
+                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+I">AYARLAR</button>
+                <button type="button" class="macro-chip-btn" data-macro-preset="WIN+L">KİLİTLE</button>
                 <button type="button" class="macro-chip-btn" data-macro-preset="WIN+SHIFT+S">EKRAN ALINTI</button>
                 <button type="button" class="macro-chip-btn" data-macro-preset="CTRL+SHIFT+ESC">GÖREV YÖN.</button>
                 <button type="button" class="macro-chip-btn" data-macro-preset="ALT+F4">ALT+F4</button>
@@ -2086,7 +2121,61 @@
 
           <div class="rule-builder-card">
             <div class="rule-builder-header">
-              <span class="sub-panel-title">2. Metin Yazdırma veya Bekleme (ms) Ekle</span>
+              <span class="sub-panel-title">2. Sistem, Medya veya Bağlantı İşlemi Ekle</span>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="macroSystemActionSelect">Uygulama İçi Sistem Kalemi</label>
+              <div class="fs-path-bar">
+                <select class="input-field" id="macroSystemActionSelect">
+                  <optgroup label="Ekran ve Masaüstü">
+                    <option value="monitors-off">Tüm Ekranları Kapat (Karart)</option>
+                    <option value="monitors-on">Tüm Ekranları Aç (Uyandır)</option>
+                    <option value="show-desktop">Masaüstünü Göster / Gizle</option>
+                    <option value="minimize-all">Tüm Pencereleri Küçült</option>
+                    <option value="close-active">Aktif Pencereyi Kapat (Alt+F4)</option>
+                    <option value="screenshot">Ekran Görüntüsü Panoya Al</option>
+                    <option value="topology-extend">Görüntü Modu: Uzat (Çift Ekran)</option>
+                    <option value="topology-clone">Görüntü Modu: Yinele</option>
+                    <option value="topology-internal">Görüntü Modu: Sadece 1. Ekran</option>
+                    <option value="topology-external">Görüntü Modu: Sadece 2. Ekran</option>
+                  </optgroup>
+                  <optgroup label="Güç ve Güvenlik">
+                    <option value="lock-pc">Bilgisayarı Kilitle / Kilidi Aç</option>
+                    <option value="sleep-pc">Bilgisayarı Uyku Moduna Al</option>
+                    <option value="restart-pc">Bilgisayarı Yeniden Başlat</option>
+                    <option value="shutdown-pc">Bilgisayarı Kapat</option>
+                  </optgroup>
+                  <optgroup label="Ses ve Medya">
+                    <option value="mute-audio">Sistem Sesini Kapat / Aç (Mute)</option>
+                    <option value="mute-mic">Mikrofonu Sustur / Aç</option>
+                    <option value="vol-up">Sesi Artır (+10%)</option>
+                    <option value="vol-down">Sesi Azalt (-10%)</option>
+                    <option value="media-play-pause">Medya Oynat / Duraklat</option>
+                    <option value="media-next">Sonraki Parça</option>
+                    <option value="media-prev">Önceki Parça</option>
+                  </optgroup>
+                  <optgroup label="Kablosuz Bağlantılar">
+                    <option value="wifi-on">Wi-Fi Aç</option>
+                    <option value="wifi-off">Wi-Fi Kapat</option>
+                    <option value="hotspot-on">Mobil Erişim Noktası Aç</option>
+                    <option value="hotspot-off">Mobil Erişim Noktası Kapat</option>
+                    <option value="bt-on">Bluetooth Aç</option>
+                    <option value="bt-off">Bluetooth Kapat</option>
+                  </optgroup>
+                  <optgroup label="Sistem Bakımı">
+                    <option value="task-manager">Görev Yöneticisini Aç</option>
+                    <option value="empty-trash">Geri Dönüşüm Kutusunu Boşalt</option>
+                    <option value="flush-dns">DNS Önbelleğini Temizle</option>
+                  </optgroup>
+                </select>
+                <button type="button" class="btn-primary btn-compact" id="addMacroSystemStepBtn">+ İşlem Ekle</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rule-builder-card">
+            <div class="rule-builder-header">
+              <span class="sub-panel-title">3. Metin Yazdırma veya Bekleme (ms) Ekle</span>
             </div>
             <div class="form-group">
               <label class="form-label" for="macroTextStepInput">Otomatik Yazılacak Metin</label>

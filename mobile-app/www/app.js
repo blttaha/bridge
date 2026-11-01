@@ -1555,8 +1555,12 @@
         renderFunctionPrefs();
 
         saveWorkspaceCache();
-        syncConnectionViewState();
-        switchToTab(state.activeTab || 'tab-scenes', false);
+        if (!state.showingHubView) {
+          syncConnectionViewState();
+          switchToTab(state.activeTab || 'tab-scenes', false);
+        } else {
+          renderSavedDevicesList();
+        }
         renderAllConnectedViews();
         syncAndroidMediaNotification();
         ensureMediaTimelineTicker();
@@ -2453,6 +2457,9 @@
     if (step.type === 'delay') {
       return `BEKLE: ${Number(step.delayMs || step.value || 100)} ms`;
     }
+    if (step.type === 'system_action') {
+      return `SİSTEM: ${String(step.label || step.value || '')}`;
+    }
     return String(step.value || '').toUpperCase();
   }
 
@@ -2531,7 +2538,7 @@
 
     const titleEl = document.getElementById('macroModalTitle');
     if (titleEl) {
-      titleEl.textContent = existingMacro ? 'Makroyu Düzenle' : 'Makro / Tuş Ataması Oluştur';
+      titleEl.textContent = existingMacro ? 'Makroyu Düzenle' : 'Makro Oluştur';
     }
     const nameInput = document.getElementById('macroNameInput');
     if (nameInput) nameInput.value = existingMacro ? existingMacro.name || '' : '';
@@ -2563,10 +2570,19 @@
 
     listEl.innerHTML = state.macroSteps
       .map((step, idx) => {
-        const typeLabel = step.type === 'text' ? 'METİN' : step.type === 'delay' ? 'BEKLE' : 'TUŞ';
+        const typeLabel =
+          step.type === 'text'
+            ? 'METİN'
+            : step.type === 'delay'
+            ? 'BEKLE'
+            : step.type === 'system_action'
+            ? 'SİSTEM'
+            : 'TUŞ';
         const valLabel =
           step.type === 'delay'
             ? `${Number(step.delayMs || step.value || 100)} ms`
+            : step.type === 'system_action'
+            ? String(step.label || step.value || '')
             : String(step.value || '');
         return `
           <div class="macro-step-row">
@@ -3005,12 +3021,16 @@
 
     if (wsEl) {
       if (state.isFullscreen) {
-        if (wsEl.parentElement !== document.body) {
+        if (wsEl.parentElement && wsEl.parentElement !== document.body) {
+          wsEl.__originLayoutContainer = wsEl.parentElement;
           document.body.appendChild(wsEl);
         }
-      } else if (remoteTabEl && wsEl.parentElement !== remoteTabEl) {
-        remoteTabEl.insertBefore(wsEl, remoteTabEl.firstChild);
-        applySingleContainerSavedLayout(remoteTabEl);
+      } else if (wsEl.parentElement === document.body) {
+        const targetContainer = wsEl.__originLayoutContainer || remoteTabEl;
+        if (targetContainer) {
+          targetContainer.insertBefore(wsEl, targetContainer.firstChild);
+        }
+        applyAllSavedPageLayouts();
       }
       wsEl.classList.toggle('is-fullscreen', state.isFullscreen);
     }
@@ -3513,6 +3533,10 @@
 
     if (wsEl) {
       wsEl.classList.toggle('is-screen-off', !state.isStreaming);
+    }
+    const remoteTabEl = document.getElementById('tab-remote');
+    if (remoteTabEl) {
+      remoteTabEl.classList.toggle('is-remote-screen-off', !state.isStreaming);
     }
 
     if (toggleBtn) {
@@ -6742,7 +6766,8 @@
         }
         if (
           document.body.classList.contains('modal-open') ||
-          document.body.classList.contains('layout-edit-mode')
+          document.body.classList.contains('layout-edit-mode') ||
+          (e.target && e.target.closest && e.target.closest('button, input, select, textarea, a, label'))
         ) {
           finishSwipe();
           return;
@@ -6921,7 +6946,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.2';
+    let currentAppVer = '2.19.3';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -9491,6 +9516,25 @@
       });
     }
 
+    const addMacroSystemStepBtn = document.getElementById('addMacroSystemStepBtn');
+    if (addMacroSystemStepBtn) {
+      addMacroSystemStepBtn.addEventListener('click', () => {
+        triggerHaptic(10);
+        const sysSel = document.getElementById('macroSystemActionSelect');
+        const code = sysSel ? sysSel.value.trim() : '';
+        if (!code) {
+          showToast('Lütfen eklenecek sistem işlemini seçin');
+          return;
+        }
+        const opt = sysSel.options[sysSel.selectedIndex];
+        const label = opt ? opt.textContent.trim() : code;
+        state.macroSteps.push({ type: 'system_action', value: code, label });
+        const nameIn = document.getElementById('macroNameInput');
+        if (nameIn && !nameIn.value.trim()) nameIn.value = label;
+        renderMacroComposerSteps();
+      });
+    }
+
     const addMacroTextStepBtn = document.getElementById('addMacroTextStepBtn');
     if (addMacroTextStepBtn) {
       addMacroTextStepBtn.addEventListener('click', () => {
@@ -10010,8 +10054,10 @@
     bindPageLayoutCustomizationEngine();
   }
 
-  // UNIVERSAL PAGE LAYOUT CUSTOMIZATION & MAGNETIC DRAG-AND-DROP ENGINE
-  const PAGE_LAYOUT_STORAGE_KEY = 'TAHABLT_PAGE_LAYOUTS_V1';
+  // UNIVERSAL ITEM-LEVEL & CROSS-PAGE LAYOUT CUSTOMIZATION ENGINE
+  const PAGE_LAYOUT_STORAGE_KEY = 'TAHABLT_PAGE_LAYOUTS_V2';
+  const defaultGlobalLayoutMap = new Map();
+  const globalLayoutItemsById = new Map();
 
   function loadSavedPageLayoutsMap() {
     try {
@@ -10029,93 +10075,116 @@
     } catch {}
   }
 
-  function ensureLayoutItemToolbars(containerEl) {
-    if (!containerEl) return;
-    const items = Array.from(containerEl.children).filter((el) => el.hasAttribute('data-layout-id'));
-    if (!containerEl.__defaultLayoutOrder) {
-      containerEl.__defaultLayoutOrder = items.map((el) => el.getAttribute('data-layout-id'));
+  function ensureLayoutGripDots(itemEl) {
+    if (!itemEl || itemEl.querySelector('.layout-grip-dots')) return;
+    const grip = document.createElement('span');
+    grip.className = 'layout-grip-dots';
+    grip.setAttribute('aria-hidden', 'true');
+    grip.innerHTML = `
+      <svg viewBox="0 0 12 16" fill="currentColor">
+        <rect x="2" y="2" width="2.4" height="2.4" rx="0.6"/>
+        <rect x="7.6" y="2" width="2.4" height="2.4" rx="0.6"/>
+        <rect x="2" y="6.8" width="2.4" height="2.4" rx="0.6"/>
+        <rect x="7.6" y="6.8" width="2.4" height="2.4" rx="0.6"/>
+        <rect x="2" y="11.6" width="2.4" height="2.4" rx="0.6"/>
+        <rect x="7.6" y="11.6" width="2.4" height="2.4" rx="0.6"/>
+      </svg>
+    `;
+
+    const titleTarget = itemEl.querySelector(
+      '.section-title-lg, .section-title, .remote-touchpad-header-title, .sub-panel-title, .wireless-title, .audio-label, .now-playing-title'
+    );
+    if (titleTarget) {
+      titleTarget.insertBefore(grip, titleTarget.firstChild);
+    } else {
+      grip.classList.add('layout-grip-floating');
+      itemEl.insertBefore(grip, itemEl.firstChild);
     }
-    items.forEach((itemEl) => {
-      if (itemEl.querySelector(':scope > .layout-item-toolbar')) return;
-      const label = itemEl.getAttribute('data-layout-label') || 'Bölüm';
-      const toolbar = document.createElement('div');
-      toolbar.className = 'layout-item-toolbar';
-      toolbar.innerHTML = `
-        <div class="layout-drag-handle">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-            <circle cx="9" cy="6" r="1.2"/><circle cx="15" cy="6" r="1.2"/>
-            <circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/>
-            <circle cx="9" cy="18" r="1.2"/><circle cx="15" cy="18" r="1.2"/>
-          </svg>
-          <span>${escapeHtml(label)}</span>
-        </div>
-        <div class="layout-step-controls">
-          <button type="button" class="layout-step-btn" data-layout-step="up" aria-label="Yukarı Taşı">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-          </button>
-          <button type="button" class="layout-step-btn" data-layout-step="down" aria-label="Aşağı Taşı">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-        </div>
-      `;
-      itemEl.insertBefore(toolbar, itemEl.firstChild);
-    });
   }
 
-  function applySingleContainerSavedLayout(containerEl, orderList) {
-    if (!containerEl || !Array.isArray(orderList) || !orderList.length) return;
-    ensureLayoutItemToolbars(containerEl);
-    const itemMap = new Map();
-    Array.from(containerEl.children).forEach((el) => {
-      const id = el.getAttribute('data-layout-id');
-      if (id) itemMap.set(id, el);
+  function snapshotDefaultGlobalLayouts() {
+    if (defaultGlobalLayoutMap.size > 0) return;
+    document.querySelectorAll('[data-layout-container]').forEach((containerEl) => {
+      const cid = containerEl.id;
+      if (!cid) return;
+      const items = Array.from(containerEl.children).filter((el) => el.hasAttribute('data-layout-id'));
+      defaultGlobalLayoutMap.set(
+        cid,
+        items.map((el) => el.getAttribute('data-layout-id'))
+      );
+      items.forEach((itemEl) => {
+        const id = itemEl.getAttribute('data-layout-id');
+        if (id) globalLayoutItemsById.set(id, itemEl);
+        ensureLayoutGripDots(itemEl);
+      });
     });
-    orderList.forEach((id) => {
-      const el = itemMap.get(id);
-      if (el) {
-        containerEl.appendChild(el);
-        itemMap.delete(id);
-      }
-    });
-    // Append any remaining items that weren't in the saved list
-    itemMap.forEach((el) => containerEl.appendChild(el));
   }
 
   function applyAllSavedPageLayouts() {
+    snapshotDefaultGlobalLayouts();
     const map = loadSavedPageLayoutsMap();
+    const placedIds = new Set();
+
+    // First pass: place all items explicitly saved in each container's order list (supports cross-page moves!)
     document.querySelectorAll('[data-layout-container]').forEach((containerEl) => {
-      ensureLayoutItemToolbars(containerEl);
       const cid = containerEl.id;
-      if (cid && Array.isArray(map[cid]) && map[cid].length) {
-        applySingleContainerSavedLayout(containerEl, map[cid]);
-      }
+      if (!cid || !Array.isArray(map[cid])) return;
+      map[cid].forEach((id) => {
+        const el = globalLayoutItemsById.get(id);
+        if (el && !placedIds.has(id)) {
+          ensureLayoutGripDots(el);
+          containerEl.appendChild(el);
+          placedIds.add(id);
+        }
+      });
+    });
+
+    // Second pass: ensure any unplaced items are in their default container in default order
+    defaultGlobalLayoutMap.forEach((defaultIds, cid) => {
+      const containerEl = document.getElementById(cid);
+      if (!containerEl) return;
+      defaultIds.forEach((id) => {
+        if (!placedIds.has(id)) {
+          const el = globalLayoutItemsById.get(id);
+          if (el) {
+            ensureLayoutGripDots(el);
+            containerEl.appendChild(el);
+            placedIds.add(id);
+          }
+        }
+      });
     });
   }
 
-  function persistContainerLayoutOrder(containerEl) {
-    if (!containerEl || !containerEl.id) return;
-    const order = Array.from(containerEl.children)
-      .filter((el) => el.hasAttribute('data-layout-id'))
-      .map((el) => el.getAttribute('data-layout-id'));
-    const map = loadSavedPageLayoutsMap();
-    map[containerEl.id] = order;
+  function persistAllContainersLayoutOrder() {
+    snapshotDefaultGlobalLayouts();
+    const map = {};
+    document.querySelectorAll('[data-layout-container]').forEach((containerEl) => {
+      if (!containerEl.id) return;
+      map[containerEl.id] = Array.from(containerEl.children)
+        .filter((el) => el.hasAttribute('data-layout-id'))
+        .map((el) => el.getAttribute('data-layout-id'));
+    });
     savePageLayoutsMap(map);
   }
 
-  function getActiveLayoutContainer() {
-    if (state.showingHubView) {
-      return document.getElementById(state.activeHubTab || 'hub-tab-devices');
-    }
-    return document.getElementById(state.activeTab || 'tab-scenes');
+  function syncLayoutTargetPillsActiveState() {
+    const curTab = state.activeTab || 'tab-scenes';
+    document.querySelectorAll('#layoutPageTargetRow [data-layout-target-tab]').forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute('data-layout-target-tab') === curTab);
+    });
   }
 
   function enterPageLayoutEditMode() {
     if (document.body.classList.contains('layout-edit-mode')) return;
     if (state.isFullscreen) return;
-    document.querySelectorAll('[data-layout-container]').forEach((c) => ensureLayoutItemToolbars(c));
+    snapshotDefaultGlobalLayouts();
     document.body.classList.add('layout-edit-mode');
     const banner = document.getElementById('layoutEditBanner');
     if (banner) banner.classList.remove('hidden');
+    const pageRow = document.getElementById('layoutPageTargetRow');
+    if (pageRow) pageRow.classList.toggle('hidden', Boolean(state.showingHubView));
+    syncLayoutTargetPillsActiveState();
     triggerHaptic(28);
   }
 
@@ -10124,27 +10193,32 @@
     document.body.classList.remove('layout-edit-mode');
     const banner = document.getElementById('layoutEditBanner');
     if (banner) banner.classList.add('hidden');
-    document.querySelectorAll('.is-layout-dragging, .layout-magnet-slot').forEach((el) => {
-      el.classList.remove('is-layout-dragging', 'layout-magnet-slot');
+    document.querySelectorAll('.is-layout-dragging, .layout-magnet-slot, .is-drop-hover').forEach((el) => {
+      el.classList.remove('is-layout-dragging', 'layout-magnet-slot', 'is-drop-hover');
       el.style.transform = '';
       el.style.zIndex = '';
     });
     triggerHaptic(12);
   }
 
-  function resetCurrentPageLayout() {
-    const containerEl = getActiveLayoutContainer();
-    if (!containerEl) return;
-    ensureLayoutItemToolbars(containerEl);
-    const defaultOrder = containerEl.__defaultLayoutOrder;
-    if (Array.isArray(defaultOrder) && defaultOrder.length) {
-      applySingleContainerSavedLayout(containerEl, defaultOrder);
-    }
-    const map = loadSavedPageLayoutsMap();
-    delete map[containerEl.id];
-    savePageLayoutsMap(map);
+  function resetAllPageLayouts() {
+    snapshotDefaultGlobalLayouts();
+    defaultGlobalLayoutMap.forEach((defaultIds, cid) => {
+      const containerEl = document.getElementById(cid);
+      if (!containerEl) return;
+      defaultIds.forEach((id) => {
+        const el = globalLayoutItemsById.get(id);
+        if (el) {
+          ensureLayoutGripDots(el);
+          containerEl.appendChild(el);
+        }
+      });
+    });
+    try {
+      localStorage.removeItem(PAGE_LAYOUT_STORAGE_KEY);
+    } catch {}
     triggerHaptic(20);
-    showToast('Sayfa düzeni varsayılan konumlara sıfırlandı');
+    showToast('Tüm sayfa ve öge konumları varsayılana sıfırlandı');
   }
 
   function bindPageLayoutCustomizationEngine() {
@@ -10153,7 +10227,7 @@
     const resetBtn = document.getElementById('resetPageLayoutBtn');
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
-        resetCurrentPageLayout();
+        resetAllPageLayouts();
       });
     }
 
@@ -10164,16 +10238,25 @@
       });
     }
 
+    const pageTargetRow = document.getElementById('layoutPageTargetRow');
+    if (pageTargetRow) {
+      pageTargetRow.addEventListener('click', (e) => {
+        const pill = e.target.closest('[data-layout-target-tab]');
+        if (!pill) return;
+        const targetTab = pill.getAttribute('data-layout-target-tab');
+        if (targetTab) {
+          switchToTab(targetTab, true);
+          syncLayoutTargetPillsActiveState();
+        }
+      });
+    }
+
     // Prevent accidental button activations inside cards while rearranging page layout
     document.addEventListener(
       'click',
       (e) => {
         if (!document.body.classList.contains('layout-edit-mode')) return;
-        if (
-          e.target.closest('#layoutEditBanner') ||
-          e.target.closest('[data-layout-step]') ||
-          e.target.closest('.bottom-nav')
-        ) {
+        if (e.target.closest('#layoutEditBanner') || e.target.closest('.bottom-nav')) {
           return;
         }
         if (e.target.closest('[data-layout-container]')) {
@@ -10184,52 +10267,32 @@
       true
     );
 
-    // Step Up / Down buttons inside layout item toolbar
-    document.addEventListener('click', (e) => {
-      if (!document.body.classList.contains('layout-edit-mode')) return;
-      const stepBtn = e.target.closest('[data-layout-step]');
-      if (!stepBtn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const dir = stepBtn.getAttribute('data-layout-step');
-      const itemEl = stepBtn.closest('[data-layout-id]');
-      const containerEl = itemEl && itemEl.parentElement;
-      if (!itemEl || !containerEl) return;
-
-      const siblings = Array.from(containerEl.children).filter(
-        (el) => el.hasAttribute('data-layout-id') && !el.classList.contains('hidden')
-      );
-      const idx = siblings.indexOf(itemEl);
-      if (idx === -1) return;
-
-      if (dir === 'up' && idx > 0) {
-        containerEl.insertBefore(itemEl, siblings[idx - 1]);
-        persistContainerLayoutOrder(containerEl);
-        triggerHaptic(12);
-        itemEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      } else if (dir === 'down' && idx < siblings.length - 1) {
-        containerEl.insertBefore(siblings[idx + 1], itemEl);
-        persistContainerLayoutOrder(containerEl);
-        triggerHaptic(12);
-        itemEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    });
-
-    // Long-press anywhere on a page section (or drag in edit mode) for Magnetic Reordering
     let longPressTimer = null;
     let pressStartX = 0;
     let pressStartY = 0;
     let dragItemEl = null;
     let dragContainerEl = null;
     let dragAnchorY = 0;
+    let lastClientX = 0;
     let lastClientY = 0;
     let autoScrollRaf = null;
+    let hoveredTargetTab = null;
+    let hoverTabSwitchTimer = null;
 
     const clearLongPress = () => {
       if (longPressTimer) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
       }
+    };
+
+    const clearHoverTabSwitch = () => {
+      if (hoverTabSwitchTimer) {
+        clearTimeout(hoverTabSwitchTimer);
+        hoverTabSwitchTimer = null;
+      }
+      hoveredTargetTab = null;
+      document.querySelectorAll('.is-drop-hover').forEach((el) => el.classList.remove('is-drop-hover'));
     };
 
     const stopAutoScroll = () => {
@@ -10239,20 +10302,67 @@
       }
     };
 
-    const beginMagneticDrag = (itemEl, clientY) => {
+    const moveDraggedItemToTabContainer = (targetTabId) => {
+      if (!dragItemEl || !targetTabId) return false;
+      const newContainer = document.getElementById(targetTabId);
+      if (!newContainer || !newContainer.hasAttribute('data-layout-container')) return false;
+      if (newContainer === dragContainerEl) return false;
+
+      switchToTab(targetTabId, true);
+      syncLayoutTargetPillsActiveState();
+
+      dragItemEl.style.transform = '';
+      newContainer.appendChild(dragItemEl);
+      dragContainerEl = newContainer;
+
+      const newRect = dragItemEl.getBoundingClientRect();
+      dragAnchorY = newRect.top + newRect.height / 2;
+      const dy = lastClientY - dragAnchorY;
+      dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.02)`;
+
+      persistAllContainersLayoutOrder();
+      triggerHaptic(22);
+      const label = dragItemEl.getAttribute('data-layout-label') || 'Öge';
+      const tabBtn = document.querySelector(`#layoutPageTargetRow [data-layout-target-tab="${targetTabId}"]`);
+      const tabName = tabBtn ? tabBtn.textContent.trim() : 'Yeni Sayfa';
+      showToast(`${label} → ${tabName} sayfasına taşındı`);
+      return true;
+    };
+
+    const detectCrossPageTabTargetAtPoint = (clientX, clientY) => {
+      if (state.showingHubView) return null;
+      const pills = Array.from(document.querySelectorAll('#layoutPageTargetRow [data-layout-target-tab]'));
+      for (const pill of pills) {
+        const r = pill.getBoundingClientRect();
+        if (clientX >= r.left && clientX <= r.right && clientY >= r.top - 6 && clientY <= r.bottom + 6) {
+          return { tabId: pill.getAttribute('data-layout-target-tab'), el: pill };
+        }
+      }
+      const navBtns = Array.from(document.querySelectorAll('#bottomNav .nav-item[data-tab]'));
+      for (const btn of navBtns) {
+        const r = btn.getBoundingClientRect();
+        if (clientX >= r.left && clientX <= r.right && clientY >= r.top - 6 && clientY <= r.bottom + 6) {
+          return { tabId: btn.getAttribute('data-tab'), el: btn };
+        }
+      }
+      return null;
+    };
+
+    const beginMagneticDrag = (itemEl, clientX, clientY) => {
       if (!itemEl || !itemEl.parentElement) return;
       dragItemEl = itemEl;
       dragContainerEl = itemEl.parentElement;
       dragAnchorY = clientY;
+      lastClientX = clientX;
       lastClientY = clientY;
       dragItemEl.classList.add('is-layout-dragging');
-      dragItemEl.style.zIndex = '40';
+      dragItemEl.style.zIndex = '88';
       triggerHaptic(18);
 
       const scrollStep = () => {
         if (!dragItemEl || !dragContainerEl) return;
         const rect = dragContainerEl.getBoundingClientRect();
-        const edgeZone = 78;
+        const edgeZone = 74;
         let scrollDelta = 0;
         if (lastClientY < rect.top + edgeZone) {
           scrollDelta = -Math.max(4, Math.round(((rect.top + edgeZone - lastClientY) / edgeZone) * 14));
@@ -10265,7 +10375,7 @@
           const actualScroll = dragContainerEl.scrollTop - prevScroll;
           if (actualScroll !== 0) {
             dragAnchorY -= actualScroll;
-            updateMagneticDragPosition(lastClientY);
+            updateMagneticDragPosition(lastClientX, lastClientY);
           }
         }
         autoScrollRaf = requestAnimationFrame(scrollStep);
@@ -10274,11 +10384,31 @@
       autoScrollRaf = requestAnimationFrame(scrollStep);
     };
 
-    const updateMagneticDragPosition = (clientY) => {
+    const updateMagneticDragPosition = (clientX, clientY) => {
       if (!dragItemEl || !dragContainerEl) return;
+      lastClientX = clientX;
       lastClientY = clientY;
       let dy = clientY - dragAnchorY;
       dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
+
+      // Check if hovering over a cross-page tab target pill or bottom navbar icon
+      const tabHit = detectCrossPageTabTargetAtPoint(clientX, clientY);
+      if (tabHit && tabHit.tabId && tabHit.tabId !== dragContainerEl.id) {
+        if (hoveredTargetTab !== tabHit.tabId) {
+          clearHoverTabSwitch();
+          hoveredTargetTab = tabHit.tabId;
+          tabHit.el.classList.add('is-drop-hover');
+          hoverTabSwitchTimer = setTimeout(() => {
+            if (dragItemEl && hoveredTargetTab === tabHit.tabId) {
+              moveDraggedItemToTabContainer(tabHit.tabId);
+              clearHoverTabSwitch();
+            }
+          }, 280);
+        }
+        return;
+      } else if (hoveredTargetTab) {
+        clearHoverTabSwitch();
+      }
 
       const draggedRect = dragItemEl.getBoundingClientRect();
       const draggedCenterY = draggedRect.top + draggedRect.height / 2;
@@ -10289,7 +10419,7 @@
       const curIdx = siblings.indexOf(dragItemEl);
       if (curIdx === -1) return;
 
-      // Check previous sibling for magnetic upward swap
+      // Magnetic upward swap
       if (curIdx > 0) {
         const prevEl = siblings[curIdx - 1];
         const prevRect = prevEl.getBoundingClientRect();
@@ -10301,13 +10431,13 @@
           dragAnchorY += afterTop - beforeTop;
           dy = clientY - dragAnchorY;
           dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
-          persistContainerLayoutOrder(dragContainerEl);
+          persistAllContainersLayoutOrder();
           triggerHaptic(10);
           return;
         }
       }
 
-      // Check next sibling for magnetic downward swap
+      // Magnetic downward swap
       if (curIdx < siblings.length - 1) {
         const nextEl = siblings[curIdx + 1];
         const nextRect = nextEl.getBoundingClientRect();
@@ -10319,7 +10449,7 @@
           dragAnchorY += afterTop - beforeTop;
           dy = clientY - dragAnchorY;
           dragItemEl.style.transform = `translate3d(0, ${dy.toFixed(1)}px, 0) scale(1.015)`;
-          persistContainerLayoutOrder(dragContainerEl);
+          persistAllContainersLayoutOrder();
           triggerHaptic(10);
         }
       }
@@ -10328,9 +10458,18 @@
     const endMagneticDrag = () => {
       clearLongPress();
       stopAutoScroll();
-      if (!dragItemEl) return;
+      if (!dragItemEl) {
+        clearHoverTabSwitch();
+        return;
+      }
+      // If user released finger directly on a target page pill or bottom nav icon before the hover timer fired, move it immediately!
+      const dropHit = detectCrossPageTabTargetAtPoint(lastClientX, lastClientY);
+      if (dropHit && dropHit.tabId && dragContainerEl && dropHit.tabId !== dragContainerEl.id) {
+        moveDraggedItemToTabContainer(dropHit.tabId);
+      }
+      clearHoverTabSwitch();
+
       const finishedEl = dragItemEl;
-      const finishedContainer = dragContainerEl;
       dragItemEl = null;
       dragContainerEl = null;
       finishedEl.classList.remove('is-layout-dragging');
@@ -10340,9 +10479,7 @@
       setTimeout(() => {
         finishedEl.classList.remove('layout-magnet-slot');
       }, 260);
-      if (finishedContainer) {
-        persistContainerLayoutOrder(finishedContainer);
-      }
+      persistAllContainersLayoutOrder();
       triggerHaptic(14);
     };
 
@@ -10356,49 +10493,48 @@
         }
         if (document.body.classList.contains('modal-open') || state.isFullscreen) return;
         const target = e.target;
-        if (!target || target.closest('#layoutEditBanner') || target.closest('[data-layout-step]')) return;
+        if (!target || target.closest('#layoutEditBanner') || target.closest('.bottom-nav')) return;
 
         const itemEl = target.closest('[data-layout-id]');
         const containerEl = target.closest('[data-layout-container]');
-        if (!containerEl) return;
+        if (!containerEl || !itemEl) return;
 
         const t = e.touches[0];
         pressStartX = t.clientX;
         pressStartY = t.clientY;
+        lastClientX = t.clientX;
+        lastClientY = t.clientY;
 
-        // If already in layout edit mode, touching the drag handle (or holding briefly on any card) starts magnetic drag
+        // In layout edit mode, touching the 6-dot grip or anywhere on an item begins dragging immediately
         if (document.body.classList.contains('layout-edit-mode')) {
-          if (!itemEl) return;
-          if (target.closest('.layout-drag-handle')) {
-            e.preventDefault();
-            beginMagneticDrag(itemEl, t.clientY);
+          if (target.closest('.layout-grip-dots')) {
+            if (e.cancelable) e.preventDefault();
+            beginMagneticDrag(itemEl, t.clientX, t.clientY);
           } else {
             clearLongPress();
             longPressTimer = setTimeout(() => {
-              beginMagneticDrag(itemEl, lastClientY || t.clientY);
-            }, 140);
+              beginMagneticDrag(itemEl, lastClientX || t.clientX, lastClientY || t.clientY);
+            }, 90);
           }
-          lastClientY = t.clientY;
           return;
         }
 
-        // When NOT in layout edit mode: ignore interactive inputs, sliders, touchpad surface, or buttons that have their own hold actions
+        // When NOT in layout edit mode: ignore interactive inputs, sliders, touchpad surface, or buttons with their own hold actions
         if (
           target.closest('#remoteViewportBox') ||
           target.closest('#laptopTouchpadButtons') ||
           target.closest('input, textarea, select, [data-hotkey], [data-key]') ||
-          target.closest('.quick-action-tile')
+          target.closest('[data-qa-tile]') ||
+          target.closest('[data-app-card-idx]') ||
+          target.closest('[data-hub-device-id]')
         ) {
           return;
         }
 
         clearLongPress();
-        lastClientY = t.clientY;
         longPressTimer = setTimeout(() => {
           enterPageLayoutEditMode();
-          if (itemEl) {
-            beginMagneticDrag(itemEl, lastClientY || t.clientY);
-          }
+          beginMagneticDrag(itemEl, lastClientX || t.clientX, lastClientY || t.clientY);
         }, 520);
       },
       { passive: false }
@@ -10412,10 +10548,11 @@
           return;
         }
         const t = e.touches[0];
+        lastClientX = t.clientX;
         lastClientY = t.clientY;
         if (dragItemEl) {
           if (e.cancelable) e.preventDefault();
-          updateMagneticDragPosition(t.clientY);
+          updateMagneticDragPosition(t.clientX, t.clientY);
           return;
         }
         if (longPressTimer) {
@@ -10447,10 +10584,10 @@
     if (initDev && initDev.authToken && !initDev.connectionRevoked) {
       loadWorkspaceCache();
       state.isInitialConnecting = true;
+      switchToTab(state.activeTab || 'tab-scenes', false);
     } else {
       state.showingHubView = true;
     }
-    switchToTab(state.activeTab || 'tab-scenes', false);
     renderLockStateUi();
     syncConnectionViewState();
     renderSavedDevicesList();
