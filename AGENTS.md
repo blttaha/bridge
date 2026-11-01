@@ -29,8 +29,8 @@ TR:
 
 Every GitHub Release MUST have:
 1. **Tag Name (`tag_name`):** `vX.Y.Z` (e.g., `v2.19.6`).
-2. **Release Title (`name`):** Written in **English** using the exact format:
-   `Bridge vX.Y.Z — <Short English Release Title>`
+2. **Release Title (`name`):** Written using the exact version format only (no description in the title):
+   `Bridge vX.Y.Z` (e.g., `Bridge v2.19.7`)
 3. **Release Notes (`body`):** Written in **both English and Turkish** using the exact section headers `### English` and `### Türkçe`, encoded cleanly as UTF-8.
 
 ### Exact Release Notes Template

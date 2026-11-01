@@ -2002,6 +2002,17 @@
         ['session', 'Ekranda görünen oynatıcıya gönder'],
         ['global', 'Klavye medya tuşu gibi (Windows hangisini seçerse)']
       ]
+    },
+    {
+      key: 'mousePriority',
+      title: 'Fare ve Touchpad Önceliği',
+      desc: 'Bilgisayar faresi ile telefon touchpad aynı anda kullanıldığında öncelik',
+      options: [
+        ['active_lock', 'Aktif kullanan öncelikli (kim hareket ettiriyorsa diğeri bekler)'],
+        ['pc_first', 'Bilgisayar (PC) faresi öncelikli'],
+        ['app_first', 'Telefon (Touchpad) öncelikli'],
+        ['shared', 'Eşzamanlı serbest (ikisi aynı anda kullanabilir)']
+      ]
     }
   ];
 
@@ -2439,42 +2450,6 @@
               <div>
                 <h3 class="scene-card-title">${escapeHtml(scene.name)}</h3>
                 <p class="scene-card-meta">${escapeHtml(metaText)}</p>
-              </div>
-              <div class="scene-card-actions">
-                <button
-                  type="button"
-                  class="icon-action-btn"
-                  data-prop-scene="${escapeHtml(scene.id)}"
-                  title="Sahne Özellikleri"
-                  aria-label="Sahne Özellikleri"
-                >
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                    <circle cx="10" cy="10" r="2.5" />
-                    <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  class="icon-action-btn"
-                  data-edit-scene="${escapeHtml(scene.id)}"
-                  title="Sahneyi Düzenle"
-                  aria-label="Sahneyi Düzenle"
-                >
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                    <path d="M13.5 3.8a1.8 1.8 0 0 1 2.5 2.5L7.2 15.1 3.5 16l.9-3.7 9.1-8.5z" stroke-linejoin="round" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  class="icon-action-btn danger"
-                  data-delete-scene="${escapeHtml(scene.id)}"
-                  title="Sahneyi Sil"
-                  aria-label="Sahneyi Sil"
-                >
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                    <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                </button>
               </div>
             </div>
             <div class="scene-mini-monitors">
@@ -5224,10 +5199,9 @@
             <div class="qa-card-actions">
               ${
                 canInspectSub
-                  ? `<button type="button" class="icon-action-btn" data-qa-edit-subitem="${idx}" title="Özellikler" aria-label="Özellikler">
+                  ? `<button type="button" class="icon-action-btn" data-qa-edit-subitem="${idx}" title="Düzenle" aria-label="Düzenle">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <circle cx="10" cy="10" r="2.5" />
-                  <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
+                  <path d="M13.5 3.8a1.8 1.8 0 0 1 2.5 2.5L7.2 15.1 3.5 16l.9-3.7 9.1-8.5z" stroke-linejoin="round" />
                 </svg>
               </button>`
                   : ''
@@ -5692,27 +5666,18 @@
               <span class="prop-kv-val">${escapeHtml(lastRunTxt)}</span>
             </div>
           </div>
-          <div class="prop-actions-grid prop-actions-icons">
-            <button type="button" class="icon-action-btn primary" data-prop-action="run_qa" title="Şimdi Başlat" aria-label="Şimdi Başlat">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M6.5 4.5l8.5 5.5-8.5 5.5V4.5z" stroke-linejoin="round" />
-              </svg>
+          <div class="prop-actions-grid">
+            <button type="button" class="btn-primary" data-prop-action="run_qa">
+              <span>Şimdi Başlat</span>
             </button>
-            <button type="button" class="icon-action-btn" data-prop-action="edit_qa" title="Düzenle" aria-label="Düzenle">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+            <button type="button" class="btn-secondary" data-prop-action="edit_qa">
+              <span>Düzenle</span>
             </button>
-            <button type="button" class="icon-action-btn" data-prop-action="dup_qa" title="Çoğalt" aria-label="Çoğalt">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                <rect x="7" y="7" width="9" height="9" rx="1.5" />
-                <path d="M4 13V5a1.5 1.5 0 0 1 1.5-1.5H13" stroke-linecap="round" />
-              </svg>
+            <button type="button" class="btn-secondary" data-prop-action="dup_qa">
+              <span>Çoğalt</span>
             </button>
-            <button type="button" class="icon-action-btn danger" data-prop-action="del_qa" title="Sil" aria-label="Sil">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+            <button type="button" class="btn-danger" data-prop-action="del_qa">
+              <span>Sil</span>
             </button>
           </div>
         </div>
@@ -5731,12 +5696,6 @@
                 <div class="mono-stat">${escapeHtml(mon)} · ${escapeHtml(formatZoneShort(it.zone))}</div>
               </div>
               <div class="qa-card-actions">
-                <button type="button" class="icon-action-btn" data-prop-inspect-subitem="${idx}" title="Özellikler" aria-label="Özellikler">
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                    <circle cx="10" cy="10" r="2.5" />
-                    <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
-                  </svg>
-                </button>
                 <button type="button" class="icon-action-btn primary" data-prop-run-subitem="${idx}" title="Aç" aria-label="Aç">
                   <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
                     <path d="M6.5 4.5l8.5 5.5-8.5 5.5V4.5z" stroke-linejoin="round" />
@@ -5787,16 +5746,12 @@
             <span class="sub-panel-title">Sahne İçeriği (${items.length} Uygulama)</span>
           </div>
           <div class="scene-items-editor-list">${rows}</div>
-          <div class="prop-actions-grid prop-actions-icons">
-            <button type="button" class="icon-action-btn primary" data-prop-action="run_scene" title="Sahneyi Uygula" aria-label="Sahneyi Uygula">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M6.5 4.5l8.5 5.5-8.5 5.5V4.5z" stroke-linejoin="round" />
-              </svg>
+          <div class="prop-actions-grid">
+            <button type="button" class="btn-primary" data-prop-action="run_scene">
+              <span>Sahneyi Uygula</span>
             </button>
-            <button type="button" class="icon-action-btn" data-prop-action="edit_scene" title="Sahneyi Düzenle" aria-label="Sahneyi Düzenle">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+            <button type="button" class="btn-secondary" data-prop-action="edit_scene">
+              <span>Düzenle</span>
             </button>
           </div>
         </div>
@@ -5836,26 +5791,18 @@
             </div>
           </div>
 
-          <div class="prop-actions-grid prop-actions-icons">
-            <button type="button" class="icon-action-btn ${topMost ? 'primary' : ''}" data-prop-win-cmd="toggle_topmost" title="${topMost ? 'Üstte Tutmayı Kaldır' : 'Her Zaman Üstte Tut'}" aria-label="Her Zaman Üstte Tut">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="M12.5 3.5l4 4-1.5 1.5-2-1-2.5 2.5 1 3-1.5 1.5-3-3-3.5 3.5M10 10L6.5 6.5l1.5-1.5 3 1 2.5-2.5-1-2z" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+          <div class="prop-actions-grid">
+            <button type="button" class="${topMost ? 'btn-primary' : 'btn-secondary'}" data-prop-win-cmd="toggle_topmost">
+              <span>${topMost ? 'Üstte Tutuluyor' : 'Üstte Tut'}</span>
             </button>
-            <button type="button" class="icon-action-btn" data-prop-win-cmd="open_file_location" title="Dosya Konumunu Aç" aria-label="Dosya Konumunu Aç">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="M2.5 6a1.5 1.5 0 0 1 1.5-1.5h3.6l1.8 1.8H16A1.5 1.5 0 0 1 17.5 7.8v6.7A1.5 1.5 0 0 1 16 16H4a1.5 1.5 0 0 1-1.5-1.5V6z" stroke-linejoin="round" />
-              </svg>
+            <button type="button" class="btn-secondary" data-prop-win-cmd="open_file_location">
+              <span>Konum</span>
             </button>
-            <button type="button" class="icon-action-btn" data-prop-win-cmd="maximize" title="Tam Ekran Yap" aria-label="Tam Ekran Yap">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="M4 8V4h4M16 8V4h-4M4 12v4h4M16 12v4h-4" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+            <button type="button" class="btn-secondary" data-prop-win-cmd="maximize">
+              <span>Tam Ekran</span>
             </button>
-            <button type="button" class="icon-action-btn danger" data-prop-win-cmd="kill_process" title="İşlemi Sonlandır" aria-label="İşlemi Sonlandır">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+            <button type="button" class="btn-danger" data-prop-win-cmd="kill_process">
+              <span>Sonlandır</span>
             </button>
           </div>
         </div>
@@ -5931,16 +5878,12 @@
           ${
             context.kind === 'installed_app' && context.app && context.app.isCustom
               ? `
-                <div class="prop-actions-grid prop-actions-icons">
-                  <button type="button" class="icon-action-btn" data-prop-action="edit_custom_app" title="Özel Uygulamayı Düzenle" aria-label="Özel Uygulamayı Düzenle">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
+                <div class="prop-actions-grid">
+                  <button type="button" class="btn-secondary" data-prop-action="edit_custom_app">
+                    <span>Özel Uygulamayı Düzenle</span>
                   </button>
-                  <button type="button" class="icon-action-btn danger" data-prop-action="del_custom_app" title="Katalogdan Kaldır" aria-label="Katalogdan Kaldır">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
+                  <button type="button" class="btn-danger" data-prop-action="del_custom_app">
+                    <span>Katalogdan Kaldır</span>
                   </button>
                 </div>
               `
@@ -7118,7 +7061,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.19.6';
+    let currentAppVer = '2.19.7';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -8751,8 +8694,65 @@
       openSceneComposer(null);
     });
 
-    // Scenes List Delegation
-    document.getElementById('scenesListContainer').addEventListener('click', async (e) => {
+    // Scenes List Delegation (Tap "Sahneyi Uygula" = Run, Long-Press Card = Open Scene Drawer Menu)
+    const scenesListContainer = document.getElementById('scenesListContainer');
+    let sceneHoldTimer = null;
+    let sceneHoldFired = false;
+
+    scenesListContainer.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.target.closest('[data-run-scene]')) return;
+        const card = e.target.closest('[data-scene-id]');
+        if (!card) return;
+        sceneHoldFired = false;
+        clearTimeout(sceneHoldTimer);
+        const sceneId = card.getAttribute('data-scene-id');
+        sceneHoldTimer = setTimeout(() => {
+          sceneHoldFired = true;
+          triggerHaptic(22);
+          const found = state.scenes.find((s) => s.id === sceneId);
+          if (found) openSceneComposer(found);
+        }, 420);
+      },
+      { passive: true }
+    );
+
+    scenesListContainer.addEventListener(
+      'touchmove',
+      () => {
+        clearTimeout(sceneHoldTimer);
+      },
+      { passive: true }
+    );
+
+    scenesListContainer.addEventListener(
+      'touchend',
+      () => {
+        clearTimeout(sceneHoldTimer);
+      },
+      { passive: true }
+    );
+
+    scenesListContainer.addEventListener('contextmenu', (e) => {
+      if (e.target.closest('[data-run-scene]')) return;
+      const card = e.target.closest('[data-scene-id]');
+      if (!card) return;
+      e.preventDefault();
+      clearTimeout(sceneHoldTimer);
+      sceneHoldFired = true;
+      triggerHaptic(20);
+      const sceneId = card.getAttribute('data-scene-id');
+      const found = state.scenes.find((s) => s.id === sceneId);
+      if (found) openSceneComposer(found);
+    });
+
+    scenesListContainer.addEventListener('click', async (e) => {
+      if (sceneHoldFired) {
+        sceneHoldFired = false;
+        e.preventDefault();
+        return;
+      }
       const runBtn = e.target.closest('[data-run-scene]');
       if (runBtn) {
         triggerHaptic(18);
@@ -8769,38 +8769,6 @@
           runBtn.innerHTML = origHtml;
         }
         return;
-      }
-
-      const propSceneBtn = e.target.closest('[data-prop-scene]');
-      if (propSceneBtn) {
-        triggerHaptic(10);
-        const sceneId = propSceneBtn.getAttribute('data-prop-scene');
-        const found = state.scenes.find((s) => s.id === sceneId);
-        if (found) openPropertiesInspector({ kind: 'scene', scene: found });
-        return;
-      }
-
-      const editBtn = e.target.closest('[data-edit-scene]');
-      if (editBtn) {
-        triggerHaptic(10);
-        const sceneId = editBtn.getAttribute('data-edit-scene');
-        const found = state.scenes.find((s) => s.id === sceneId);
-        if (found) openSceneComposer(found);
-        return;
-      }
-
-      const delBtn = e.target.closest('[data-delete-scene]');
-      if (delBtn) {
-        triggerHaptic(15);
-        const sceneId = delBtn.getAttribute('data-delete-scene');
-        try {
-          const res = await sendCommand('delete_scene', { sceneId });
-          state.scenes = res.scenes || [];
-          renderScenesList();
-          showToast('Sahne silindi');
-        } catch (err) {
-          showToast(err.message);
-        }
       }
     });
 
@@ -9235,12 +9203,15 @@
       }
     });
 
-    document.getElementById('snapInspectWinBtn').addEventListener('click', () => {
-      if (!state.snapTargetWindow) return;
-      triggerHaptic(12);
-      closeModal('windowSnapModal');
-      openPropertiesInspector({ kind: 'window', window: state.snapTargetWindow });
-    });
+    const snapInspectWinBtn = document.getElementById('snapInspectWinBtn');
+    if (snapInspectWinBtn) {
+      snapInspectWinBtn.addEventListener('click', () => {
+        if (!state.snapTargetWindow) return;
+        triggerHaptic(12);
+        closeModal('windowSnapModal');
+        openPropertiesInspector({ kind: 'window', window: state.snapTargetWindow });
+      });
+    }
 
     document.getElementById('snapMinimizeWinBtn').addEventListener('click', async () => {
       if (!state.snapTargetWindow) return;
@@ -10937,6 +10908,8 @@
           target.closest('#laptopTouchpadButtons') ||
           target.closest('input, textarea, select, [data-hotkey], [data-key]') ||
           target.closest('[data-qa-tile]') ||
+          target.closest('[data-scene-id]') ||
+          target.closest('[data-macro-id]') ||
           target.closest('[data-app-card-idx]') ||
           target.closest('[data-hub-device-id]')
         ) {

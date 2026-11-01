@@ -4258,25 +4258,138 @@ namespace TahaBLT
             return result;
         }
 
-        private static void MoveCursorHardware(int targetX, int targetY)
+        private static readonly object mousePrioritySync = new object();
+        private static int lastPhoneCursorX = int.MinValue;
+        private static int lastPhoneCursorY = int.MinValue;
+        private static DateTime lastPhoneCursorMoveUtc = DateTime.MinValue;
+        private static DateTime lastPhysicalMouseMoveUtc = DateTime.MinValue;
+        private static bool isCursorClippedByApp = false;
+        private static System.Threading.Timer cursorClipReleaseTimer = null;
+
+        private static void ReleaseAppCursorClip()
         {
-            SetCursorPos(targetX, targetY);
-            Rectangle vs = SystemInformation.VirtualScreen;
-            int vx = vs.X;
-            int vy = vs.Y;
-            int vw = Math.Max(1, vs.Width);
-            int vh = Math.Max(1, vs.Height);
-            int absX = (int)Math.Round(((double)(targetX - vx) * 65535.0) / Math.Max(1, vw - 1));
-            int absY = (int)Math.Round(((double)(targetY - vy) * 65535.0) / Math.Max(1, vh - 1));
-            mouse_event(MOUSEEVENTF_MOVE | 0x8000 | 0x4000, absX, absY, 0, IntPtr.Zero);
+            lock (mousePrioritySync)
+            {
+                if (isCursorClippedByApp)
+                {
+                    ClipCursor(IntPtr.Zero);
+                    isCursorClippedByApp = false;
+                }
+                try
+                {
+                    Point p = Cursor.Position;
+                    lastPhoneCursorX = p.X;
+                    lastPhoneCursorY = p.Y;
+                }
+                catch { }
+            }
+        }
+
+        private static bool CheckMousePriorityAllowsPhone(string priority, string inputType)
+        {
+            if (string.IsNullOrEmpty(priority)) priority = "active_lock";
+            if (inputType == "mouse_up") return true;
+
+            lock (mousePrioritySync)
+            {
+                if (!isCursorClippedByApp)
+                {
+                    try
+                    {
+                        Point cur = Cursor.Position;
+                        if (lastPhoneCursorX != int.MinValue &&
+                            (Math.Abs(cur.X - lastPhoneCursorX) > 2 || Math.Abs(cur.Y - lastPhoneCursorY) > 2))
+                        {
+                            lastPhysicalMouseMoveUtc = DateTime.UtcNow;
+                        }
+                        lastPhoneCursorX = cur.X;
+                        lastPhoneCursorY = cur.Y;
+                    }
+                    catch { }
+                }
+
+                if (priority == "pc_first" || priority == "active_lock")
+                {
+                    double msSincePhysical = (DateTime.UtcNow - lastPhysicalMouseMoveUtc).TotalMilliseconds;
+                    if (msSincePhysical >= 0 && msSincePhysical < 650)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+
+        private static void MoveCursorHardware(int targetX, int targetY, string priority = "active_lock")
+        {
+            lock (mousePrioritySync)
+            {
+                if (isCursorClippedByApp)
+                {
+                    ClipCursor(IntPtr.Zero);
+                    isCursorClippedByApp = false;
+                }
+
+                SetCursorPos(targetX, targetY);
+                Rectangle vs = SystemInformation.VirtualScreen;
+                int vx = vs.X;
+                int vy = vs.Y;
+                int vw = Math.Max(1, vs.Width);
+                int vh = Math.Max(1, vs.Height);
+                int absX = (int)Math.Round(((double)(targetX - vx) * 65535.0) / Math.Max(1, vw - 1));
+                int absY = (int)Math.Round(((double)(targetY - vy) * 65535.0) / Math.Max(1, vh - 1));
+                mouse_event(MOUSEEVENTF_MOVE | 0x8000 | 0x4000, absX, absY, 0, IntPtr.Zero);
+
+                try
+                {
+                    Point p = Cursor.Position;
+                    lastPhoneCursorX = p.X;
+                    lastPhoneCursorY = p.Y;
+                }
+                catch
+                {
+                    lastPhoneCursorX = targetX;
+                    lastPhoneCursorY = targetY;
+                }
+                lastPhoneCursorMoveUtc = DateTime.UtcNow;
+
+                if (priority == "app_first" || priority == "active_lock")
+                {
+                    RECT clipRect = new RECT
+                    {
+                        Left = targetX,
+                        Top = targetY,
+                        Right = targetX + 1,
+                        Bottom = targetY + 1
+                    };
+                    if (ClipCursor(ref clipRect))
+                    {
+                        isCursorClippedByApp = true;
+                        if (cursorClipReleaseTimer == null)
+                        {
+                            cursorClipReleaseTimer = new System.Threading.Timer(_ => ReleaseAppCursorClip(), null, 500, System.Threading.Timeout.Infinite);
+                        }
+                        else
+                        {
+                            cursorClipReleaseTimer.Change(500, System.Threading.Timeout.Infinite);
+                        }
+                    }
+                }
+            }
         }
 
         private static object ApplyInputCommand(Dictionary<string, object> args)
         {
             string type = args.ContainsKey("type") ? Convert.ToString(args["type"]) : "";
+            string mousePriority = args.ContainsKey("mousePriority") ? Convert.ToString(args["mousePriority"]) : "active_lock";
             bool hasExplicitMon = args.ContainsKey("monitorIndex");
             int monIdx = hasExplicitMon ? Convert.ToInt32(args["monitorIndex"]) : 0;
             var mon = GetTargetMonitorBounds(type == "mouse_move_rel" && !hasExplicitMon ? -1 : monIdx);
+
+            if (type.StartsWith("mouse_") && !CheckMousePriorityAllowsPhone(mousePriority, type))
+            {
+                return new { ok = false, skippedByPriority = true, priority = mousePriority };
+            }
 
             if (type == "touch")
             {
@@ -4289,7 +4402,7 @@ namespace TahaBLT
                 Point p = Cursor.Position;
                 int nextX = Math.Max(mon.x, Math.Min(mon.x + mon.width - 1, p.X + dx));
                 int nextY = Math.Max(mon.y, Math.Min(mon.y + mon.height - 1, p.Y + dy));
-                MoveCursorHardware(nextX, nextY);
+                MoveCursorHardware(nextX, nextY, mousePriority);
                 double nx = Math.Max(0.0, Math.Min(1.0, (double)(nextX - mon.x) / Math.Max(1, mon.width)));
                 double ny = Math.Max(0.0, Math.Min(1.0, (double)(nextY - mon.y) / Math.Max(1, mon.height)));
                 return new { ok = true, normX = Math.Round(nx, 4), normY = Math.Round(ny, 4) };
@@ -4300,7 +4413,7 @@ namespace TahaBLT
                 double ny = args.ContainsKey("y") ? Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["y"]))) : 0.5;
                 int targetX = mon.x + (int)Math.Round(nx * mon.width);
                 int targetY = mon.y + (int)Math.Round(ny * mon.height);
-                MoveCursorHardware(targetX, targetY);
+                MoveCursorHardware(targetX, targetY, mousePriority);
                 return new { ok = true, normX = Math.Round(nx, 4), normY = Math.Round(ny, 4) };
             }
             else if (type == "mouse_down")
@@ -4309,7 +4422,7 @@ namespace TahaBLT
                 {
                     double nx = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"])));
                     double ny = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["y"])));
-                    MoveCursorHardware(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny));
+                    MoveCursorHardware(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny), mousePriority);
                 }
                 string btn = args.ContainsKey("button") ? Convert.ToString(args["button"]) : "left";
                 if (btn == "right") mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, IntPtr.Zero);
@@ -4323,7 +4436,7 @@ namespace TahaBLT
                 {
                     double nx = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"])));
                     double ny = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["y"])));
-                    MoveCursorHardware(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny));
+                    MoveCursorHardware(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny), mousePriority);
                 }
                 string btn = args.ContainsKey("button") ? Convert.ToString(args["button"]) : "left";
                 if (btn == "right") mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, IntPtr.Zero);
@@ -4337,7 +4450,7 @@ namespace TahaBLT
                 {
                     double nx = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["x"])));
                     double ny = Math.Max(0.0, Math.Min(1.0, Convert.ToDouble(args["y"])));
-                    MoveCursorHardware(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny));
+                    MoveCursorHardware(NormToScreen(mon.x, mon.width, nx), NormToScreen(mon.y, mon.height, ny), mousePriority);
                 }
 
                 string btn = args.ContainsKey("button") ? Convert.ToString(args["button"]) : "left";

@@ -877,7 +877,8 @@ const FUNCTION_PREF_OPTIONS = {
   restart: ['normal', 'force'],
   monitorsOff: ['power', 'blackout'],
   showDesktop: ['win_d', 'win_m'],
-  media: ['session', 'global']
+  media: ['session', 'global'],
+  mousePriority: ['active_lock', 'pc_first', 'app_first', 'shared']
 };
 
 function sanitizeFunctionPrefs(input) {
@@ -4016,12 +4017,20 @@ wss.on('connection', (ws, req) => {
             touchActiveSockets.add(ws);
             if (params.phase === 'up' || params.phase === 'cancel') touchActiveSockets.delete(ws);
           }
-          bridge.sendFast('send_input', params);
+          const fastPayload =
+            params && typeof params === 'object'
+              ? { ...params, mousePriority: (functionPrefs && functionPrefs.mousePriority) || 'active_lock' }
+              : params;
+          bridge.sendFast('send_input', fastPayload);
           return;
         }
 
         case 'send_input': {
-          const res = await bridge.call('send_input', params, 1500);
+          const inputPayload =
+            params && typeof params === 'object'
+              ? { ...params, mousePriority: (functionPrefs && functionPrefs.mousePriority) || 'active_lock' }
+              : params;
+          const res = await bridge.call('send_input', inputPayload, 1500);
           if (params.type === 'key' && String(params.key || '').toUpperCase().startsWith('MEDIA_')) {
             scheduleFastMediaSync();
           }

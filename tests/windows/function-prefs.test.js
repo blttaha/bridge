@@ -29,7 +29,7 @@ let cmdOk = true;
 const make = new Function('bridge', 'spawnCalls', 'state', code + `
   async function runSystemCommand(f, a) { spawnCalls.push(f + ' ' + a.join(' ')); return state.cmdOk; }
   return { sanitizeFunctionPrefs, runMonitorPower, runSystemControl, runAudioControl, setPrefs: (p) => { functionPrefs = sanitizeFunctionPrefs(p); }, get prefs() { return functionPrefs; } };
-`.replace('async function runSystemCommand', 'var functionPrefs; var IS_WINDOWS = true; async function runSystemCommand'));
+`.replace('async function runSystemCommand', 'var functionPrefs; var monitorsManuallyOff = false; var IS_WINDOWS = true; async function runSystemCommand'));
 const spawnCalls = [];
 const st = { cmdOk: true };
 const m = make(bridge, spawnCalls, st);
@@ -45,6 +45,10 @@ const assert = require('assert');
   };
   assert.deepStrictEqual(m.sanitizeFunctionPrefs({ lock: 'evil', sleep: 'hibernate', x: 1 }).lock, 'custom');
   assert.strictEqual(m.sanitizeFunctionPrefs({ sleep: 'hibernate' }).sleep, 'hibernate');
+  assert.strictEqual(m.sanitizeFunctionPrefs({}).mousePriority, 'active_lock');
+  assert.strictEqual(m.sanitizeFunctionPrefs({ mousePriority: 'pc_first' }).mousePriority, 'pc_first');
+  assert.strictEqual(m.sanitizeFunctionPrefs({ mousePriority: 'app_first' }).mousePriority, 'app_first');
+  assert.strictEqual(m.sanitizeFunctionPrefs({ mousePriority: 'shared' }).mousePriority, 'shared');
   assert.strictEqual(Object.keys(m.sanitizeFunctionPrefs({ x: 1 })).includes('x'), false);
   await check({}, () => m.runSystemControl({ action: 'toggle_lock' }), ['system_control {"action":"toggle_lock"}']);
   let r = await check({ lock: 'windows' }, () => m.runSystemControl({ action: 'toggle_lock' }), ['system_control {"action":"stats"}'], ['rundll32.exe user32.dll,LockWorkStation']);

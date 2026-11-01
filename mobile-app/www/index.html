@@ -230,7 +230,7 @@
 
                 <div class="setting-action-row">
                   <div class="setting-meta">
-                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.6</span>
+                    <span class="setting-title" id="updateVersionTitle">Bridge v2.19.7</span>
                     <span class="setting-desc" id="updateStatusCaption">GitHub (blttaha/bridge) üzerinden mobil ve masaüstü sürümlerini denetleyin</span>
                   </div>
                   <button type="button" class="btn-compact btn-secondary" id="btnCheckUpdatesSetting">Denetle</button>
@@ -1328,16 +1328,15 @@
           <div class="scene-items-editor-list" id="sceneEditorItemsList"></div>
         </div>
 
-        <div class="modal-footer modal-footer-icons">
-          <button type="button" class="icon-action-btn danger hidden" id="deleteSceneModalBtn" title="Sahneyi Sil" aria-label="Sahneyi Sil">
+        <div class="modal-footer">
+          <button type="button" class="btn-danger hidden" id="deleteSceneModalBtn" title="Sahneyi Sil" aria-label="Sahneyi Sil">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
               <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
+            <span>Sahneyi Sil</span>
           </button>
-          <button type="button" class="icon-action-btn primary" id="saveSceneConfirmBtn" title="Kaydet" aria-label="Kaydet">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+          <button type="button" class="btn-primary" id="saveSceneConfirmBtn" title="Kaydet" aria-label="Kaydet">
+            <span>Kaydet</span>
           </button>
         </div>
       </div>
@@ -1404,22 +1403,15 @@
             </div>
           </div>
         </div>
-        <div class="modal-footer modal-footer-icons">
-          <button type="button" class="icon-action-btn" id="snapInspectWinBtn" title="Özellikler" aria-label="Özellikler">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-              <circle cx="10" cy="10" r="2.5" />
-              <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
-            </svg>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="snapMinimizeWinBtn" title="Simge Durumu" aria-label="Simge Durumu">
+            <span>Simge Durumu</span>
           </button>
-          <button type="button" class="icon-action-btn" id="snapMinimizeWinBtn" title="Simge Durumu" aria-label="Simge Durumu">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M5 14h10" stroke-linecap="round" />
-            </svg>
-          </button>
-          <button type="button" class="icon-action-btn danger" id="snapCloseWinBtn" title="Pencereyi Kapat / Sonlandır" aria-label="Pencereyi Kapat">
+          <button type="button" class="btn-danger" id="snapCloseWinBtn" title="Pencereyi Kapat / Sonlandır" aria-label="Pencereyi Kapat">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
               <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
+            <span>Pencereyi Kapat</span>
           </button>
         </div>
       </div>
@@ -1678,22 +1670,15 @@
           <div class="scene-items-editor-list" id="qaEditorItemsList"></div>
         </div>
 
-        <div class="modal-footer modal-footer-icons">
-          <button type="button" class="icon-action-btn danger hidden" id="deleteQaModalBtn" title="Butonu Sil" aria-label="Butonu Sil">
+        <div class="modal-footer">
+          <button type="button" class="btn-danger hidden" id="deleteQaModalBtn" title="Butonu Sil" aria-label="Butonu Sil">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
               <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
+            <span>Butonu Sil</span>
           </button>
-          <button type="button" class="icon-action-btn hidden" id="inspectQaModalBtn" title="Özellikler" aria-label="Özellikler">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-              <circle cx="10" cy="10" r="2.5" />
-              <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.05 5.05l1.4 1.4M13.55 13.55l1.4 1.4M14.95 5.05l-1.4 1.4M6.45 13.55l-1.4 1.4" stroke-linecap="round" />
-            </svg>
-          </button>
-          <button type="button" class="icon-action-btn primary" id="saveQaConfirmBtn" title="Kaydet" aria-label="Kaydet">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+          <button type="button" class="btn-primary" id="saveQaConfirmBtn" title="Kaydet" aria-label="Kaydet">
+            <span>Kaydet</span>
           </button>
         </div>
       </div>
@@ -1806,11 +1791,9 @@
             </div>
           </div>
 
-          <div class="modal-footer modal-footer-icons">
-            <button type="submit" class="icon-action-btn primary" id="saveManualAppSubmitBtn" title="Kaydet" aria-label="Kaydet">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
+          <div class="modal-footer">
+            <button type="submit" class="btn-primary" id="saveManualAppSubmitBtn" title="Kaydet" aria-label="Kaydet">
+              <span>Kaydet</span>
             </button>
           </div>
         </form>
@@ -1931,21 +1914,18 @@
         <div class="modal-body">
           <div class="device-detail-grid" id="deviceDetailInfoGrid"></div>
         </div>
-        <div class="modal-footer modal-footer-icons">
-          <button type="button" class="icon-action-btn" id="detailModalWolBtn" title="Ağdan Uyandır (Wake-on-LAN)" aria-label="Ağdan Uyandır">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
-              <path d="M10 3v7m4.95-4.95a7 7 0 1 1-9.9 0" stroke-linecap="round" />
-            </svg>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="detailModalWolBtn" title="Ağdan Uyandır (Wake-on-LAN)" aria-label="Ağdan Uyandır">
+            <span>Uyandır</span>
           </button>
-          <button type="button" class="icon-action-btn hidden" id="detailModalDisconnectBtn" title="Aktif Bağlantıyı Kes" aria-label="Aktif Bağlantıyı Kes">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
-              <path d="M7.5 12.5l5-5m-6.8 1.8l-1.4 1.4a3.2 3.2 0 0 0 4.5 4.5l1.4-1.4m1.6-6.1l1.4-1.4a3.2 3.2 0 0 0-4.5-4.5l-1.4 1.4M3.5 3.5l13 13" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+          <button type="button" class="btn-secondary hidden" id="detailModalDisconnectBtn" title="Aktif Bağlantıyı Kes" aria-label="Aktif Bağlantıyı Kes">
+            <span>Bağlantıyı Kes</span>
           </button>
-          <button type="button" class="icon-action-btn danger" id="detailModalDeleteBtn" title="Cihazı Sil (Eşleşmeyi Kaldır)" aria-label="Cihazı Sil">
+          <button type="button" class="btn-danger" id="detailModalDeleteBtn" title="Cihazı Sil (Eşleşmeyi Kaldır)" aria-label="Cihazı Sil">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
               <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
+            <span>Cihazı Sil</span>
           </button>
         </div>
       </div>
@@ -1982,16 +1962,12 @@
           </div>
         </div>
 
-        <div class="modal-footer modal-footer-icons">
-          <button type="button" class="icon-action-btn" id="resetQuickTilesBtn" title="Varsayılana Dön" aria-label="Varsayılana Dön">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
-              <path d="M3.5 10a6.5 6.5 0 1 0 1.9-4.6L3.5 7.2M3.5 3.5v3.7h3.7" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="resetQuickTilesBtn" title="Varsayılana Dön" aria-label="Varsayılana Dön">
+            <span>Varsayılana Dön</span>
           </button>
-          <button type="button" class="icon-action-btn primary" id="saveQuickTilesBtn" title="Uygula" aria-label="Uygula">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+          <button type="button" class="btn-primary" id="saveQuickTilesBtn" title="Uygula" aria-label="Uygula">
+            <span>Uygula</span>
           </button>
         </div>
       </div>
@@ -2234,16 +2210,15 @@
           </div>
         </div>
 
-        <div class="modal-footer modal-footer-icons">
-          <button type="button" class="icon-action-btn danger hidden" id="deleteMacroModalBtn" title="Makroyu Sil" aria-label="Makroyu Sil">
+        <div class="modal-footer">
+          <button type="button" class="btn-danger hidden" id="deleteMacroModalBtn" title="Makroyu Sil" aria-label="Makroyu Sil">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
               <path d="M4.5 6h11M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-5.5 0l.6 9.5a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L13.5 6" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
+            <span>Makroyu Sil</span>
           </button>
-          <button type="button" class="icon-action-btn primary" id="saveMacroModalBtn" title="Makroyu Kaydet" aria-label="Makroyu Kaydet">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M4.5 10.5l3.8 3.8 7.2-7.6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
+          <button type="button" class="btn-primary" id="saveMacroModalBtn" title="Makroyu Kaydet" aria-label="Makroyu Kaydet">
+            <span>Kaydet</span>
           </button>
         </div>
       </div>

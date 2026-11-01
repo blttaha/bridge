@@ -2441,30 +2441,42 @@ body.modal-open .main-viewport {
 }
 
 .modal-footer {
-  padding: 10px 18px calc(16px + env(safe-area-inset-bottom, 0px));
-  background-color: transparent;
+  padding: 12px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+  background-color: var(--bg-carbon);
+  border-top: 1px solid var(--border-subtle);
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 8px;
+  justify-content: stretch;
+  gap: 10px;
+  width: 100%;
 }
 
 .modal-body .modal-footer {
-  padding: 6px 0 2px;
+  padding: 10px 0 2px;
   background-color: transparent;
+  border-top: none;
 }
 
-.modal-footer > button {
-  flex: 1;
+.modal-footer > button:not(.hidden) {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.modal-footer > .icon-action-btn {
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
-}
-
-.modal-footer > .btn-primary {
-  flex: 1.4;
+.modal-footer > button svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
 }
 
 /* DEVICE SWITCHER CARDS */
@@ -4798,11 +4810,25 @@ select.input-field {
    ========================================================================= */
 [data-layout-container] > [data-layout-id] {
   margin-top: 0 !important;
-  margin-bottom: 14px !important;
+  margin-bottom: 24px !important;
+}
+
+[data-layout-container] > .layout-header-item[data-layout-id] {
+  margin-top: 6px !important;
+  margin-bottom: 12px !important;
+}
+
+[data-layout-container] > .layout-header-item[data-layout-id]:first-child {
+  margin-top: 0 !important;
 }
 
 [data-layout-container] > [data-layout-id]:last-child {
   margin-bottom: 0 !important;
+}
+
+.section-block > .section-title,
+.section-block > .section-header-row {
+  margin-bottom: 12px;
 }
 
 /* Lock <select> focus/active colors so dropdowns never get stuck with a changed color */
@@ -4953,36 +4979,26 @@ select.input-field:focus-visible,
   height: 17px;
 }
 
-/* Unified Drawer Modal Footers & Clean Icon Action Bars */
-.modal-footer,
-.modal-footer.modal-footer-icons {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 12px 18px calc(14px + var(--safe-bottom));
-  border-top: 1px solid var(--border-subtle);
-  background-color: var(--bg-carbon);
-}
-
+/* Unified Single-Row Drawer Action Bars & Inline Icon Buttons */
 .icon-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 46px;
-  height: 44px;
-  padding: 0 14px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
   background-color: var(--bg-graphite);
   border: 1px solid var(--border-subtle);
   color: var(--ink-primary);
   cursor: pointer;
+  flex-shrink: 0;
   transition: transform 120ms ease, background-color 140ms ease, border-color 140ms ease;
 }
 
 .icon-action-btn svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
 }
 
@@ -4994,8 +5010,6 @@ select.input-field:focus-visible,
   background-color: #FFFFFF;
   border-color: #FFFFFF;
   color: #09090B;
-  flex: 1;
-  max-width: 140px;
 }
 
 .icon-action-btn.danger {
@@ -5004,20 +5018,39 @@ select.input-field:focus-visible,
   color: #F87171;
 }
 
-.prop-actions-grid.prop-actions-icons {
+.prop-actions-grid {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: stretch;
   gap: 8px;
-  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 4px;
 }
 
-.prop-actions-grid.prop-actions-icons .icon-action-btn {
-  flex: 1 1 48px;
+.prop-actions-grid > button:not(.hidden) {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.prop-actions-grid > button svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 
 .layout-header-item {
-  margin-bottom: -4px;
+  margin-bottom: 10px;
 }
 
 .layout-widget-card,
@@ -5079,7 +5112,7 @@ select.input-field:focus-visible,
 
 [data-layout-container] > [data-layout-group].is-group-merged-bottom {
   margin-top: 0 !important;
-  margin-bottom: 0 !important;
+  margin-bottom: 24px !important;
   background-color: var(--bg-carbon);
   border: 1px solid var(--border-subtle) !important;
   border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
