@@ -1156,11 +1156,13 @@
       return cached.data;
     }
 
+    const ntfyUrl = `https://ntfy.sh/${encodeURIComponent(syncTopic)}/json?poll=1&since=12h`;
+
     const browserPromise = (async () => {
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 5200);
       try {
-        const resp = await fetch(`https://ntfy.sh/${encodeURIComponent(syncTopic)}/json?poll=1&since=4h`, {
+        const resp = await fetch(ntfyUrl, {
           signal: controller.signal
         });
         clearTimeout(t);
@@ -1180,6 +1182,13 @@
           const parsed = sanitizeWanSync(JSON.parse(raw || '{}'), verifyKey);
           if (parsed && (parsed.tunnelUrl || parsed.lanIp)) return parsed;
         } catch {}
+      }
+      if (window.TahaNative && typeof window.TahaNative.httpGetAsync === 'function') {
+        const rawText = await callNativeAsync('httpGetAsync', [ntfyUrl, 5000], 5400);
+        if (rawText) {
+          const parsed = parseNtfyLinesToSyncObj(rawText, verifyKey);
+          if (parsed && (parsed.tunnelUrl || parsed.lanIp)) return parsed;
+        }
       }
       return null;
     })();

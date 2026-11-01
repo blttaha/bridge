@@ -4024,6 +4024,7 @@ function publishToNtfyTopic(topic, body) {
 }
 
 let lastPublishedPayloadSig = '';
+let lastPublishedWallTs = 0;
 
 // ntfy.sh topics are public and unauthenticated, so every published endpoint carries an HMAC. Phones only
 // follow updates signed with the key they received at pairing (pin topics: keyed by the pairing code).
@@ -4039,10 +4040,13 @@ function publishWanRendezvous(force = false) {
   try {
     const netInfo = getNetworkInfo();
     const sig = `${currentTunnelUrl}|${(netInfo.lanIps || []).join(',')}|${netInfo.tailscaleIp}|${config.pin}`;
-    if (!force && sig === lastPublishedPayloadSig) return;
+    const now = Date.now();
+    const isStale = now - lastPublishedWallTs >= 45 * 60 * 1000;
+    if (!force && !isStale && sig === lastPublishedPayloadSig) return;
     // Avoid overwriting a valid tunnel on ntfy.sh with an empty tunnelUrl while cloudflared is still booting
     if (!force && !currentTunnelUrl && process.uptime() < 12) return;
     lastPublishedPayloadSig = sig;
+    lastPublishedWallTs = now;
 
     const message = {
       type: 'TAHABLT_WAN_SYNC',
@@ -4273,7 +4277,7 @@ function startBackgroundWatchers() {
     lastNetSignature = `${(initNet.lanIps || []).join(',')}|${initNet.tailscaleIp}`;
   } catch {}
 
-  // 1. Network Interface Watcher (detects USB RNDIS Tethering & Hotspot IP changes within 6s)
+  // 1. Network Interface Watcher (detects USB RNDIS Tethering & Hotspot IP changes within 6s, and keeps WAN rendezvous fresh)
   setInterval(() => {
     try {
       const netInfo = getNetworkInfo();
@@ -4281,7 +4285,7 @@ function startBackgroundWatchers() {
       if (sig !== lastNetSignature) {
         lastNetSignature = sig;
         updateRuntimeStatusFile();
-        publishWanRendezvous();
+        publishWanRendezvous(true);
         broadcastStateUpdate('tunnel_updated', {
           lanIp: netInfo.lanIp,
           lanIps: netInfo.lanIps,
@@ -4292,6 +4296,8 @@ function startBackgroundWatchers() {
           wsTunnelUrl: currentWsTunnelUrl,
           syncTopic: SYNC_TOPIC
         });
+      } else if (currentTunnelUrl && Date.now() - lastPublishedWallTs >= 45 * 60 * 1000) {
+        publishWanRendezvous(true);
       }
     } catch {}
   }, 6000);
@@ -4371,8 +4377,8 @@ function startListening(retryCount = 0) {
     setTimeout(() => {
       if (currentTunnelUrl) publishWanRendezvous();
     }, 7000);
-    // Re-publish WAN rendezvous every 90 minutes so ntfy.sh cache stays warm
-    setInterval(publishWanRendezvous, 90 * 60 * 1000);
+    // Re-publish WAN rendezvous every 45 minutes so ntfy.sh cache never expires (even across >4h idle periods)
+    setInterval(() => publishWanRendezvous(true), 45 * 60 * 1000);
     const netInfo = getNetworkInfo();
     console.log(
       `[Bridge] PC Agent aktif -> LAN: ${(netInfo.lanIps || [netInfo.lanIp]).join(', ')}:${PORT} | PIN: ${config.pin}`
