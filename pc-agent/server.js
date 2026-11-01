@@ -2933,9 +2933,16 @@ async function runAudioControl(params) {
   const p = params || {};
   if (p.action === 'media_command' && functionPrefs.media === 'global') {
     await bridge.call('send_input', { type: 'key', key: String(p.key || 'MEDIA_PLAY_PAUSE').toUpperCase() });
-    return bridge.call('audio_control', { action: 'get' });
+    const audio = await bridge.call('audio_control', { action: 'get' });
+    scheduleFastMediaSync();
+    return audio;
   }
-  return bridge.call('audio_control', p);
+  const audio = await bridge.call('audio_control', p);
+  if (p.action === 'seek' || p.action === 'media_command') {
+    if (audio) broadcastStateUpdate('audio_updated', audio);
+    scheduleFastMediaSync();
+  }
+  return audio;
 }
 
 // Power Countdown Timer Manager
@@ -4208,8 +4215,11 @@ wss.on('connection', (ws, req) => {
               ? { ...params, mousePriority: (functionPrefs && functionPrefs.mousePriority) || 'active_lock' }
               : params;
           const res = await bridge.call('send_input', inputPayload, 1500);
-          if (params.type === 'key' && String(params.key || '').toUpperCase().startsWith('MEDIA_')) {
-            scheduleFastMediaSync();
+          if (params.type === 'key') {
+            const kUpper = String(params.key || '').toUpperCase();
+            if (kUpper.startsWith('MEDIA_') || kUpper === 'LEFT' || kUpper === 'RIGHT' || kUpper === 'SPACE' || kUpper === 'J' || kUpper === 'L' || kUpper === 'K') {
+              scheduleFastMediaSync();
+            }
           }
           return reply(true, res);
         }
@@ -4637,6 +4647,8 @@ function startBackgroundWatchers() {
 
   // 2. Real-Time PC Media / Now-Playing Watcher (pushes audio_updated to phone Notification Bar & Media Mixer)
   let lastBroadcastMediaTick = 0;
+  let lastWatchedMediaPos = -1;
+  let lastWatchedMediaTs = 0;
   setInterval(async () => {
     if (authenticatedClients.size === 0) return;
     try {
@@ -4645,7 +4657,13 @@ function startBackgroundWatchers() {
       const np = audio.nowPlaying || {};
       const sig = `${Boolean(np.active)}|${Boolean(np.isPlaying)}|${np.title || ''}|${np.appName || ''}|${np.durationSec || 0}|${audio.masterVolume}|${audio.masterMuted}`;
       const now = Date.now();
-      if (sig !== lastMediaSignature || (np.active && now - lastBroadcastMediaTick >= 4500)) {
+      const curPos = Number(np.positionSec || 0);
+      const dtSec = lastWatchedMediaTs > 0 && np.isPlaying ? Math.max(0, (now - lastWatchedMediaTs) / 1000) : 0;
+      const expectedPos = lastWatchedMediaPos >= 0 ? lastWatchedMediaPos + dtSec : curPos;
+      const posJumped = np.active && lastWatchedMediaPos >= 0 && Math.abs(curPos - expectedPos) >= 2.0;
+      lastWatchedMediaPos = np.active ? curPos : -1;
+      lastWatchedMediaTs = now;
+      if (sig !== lastMediaSignature || posJumped || (np.active && now - lastBroadcastMediaTick >= 4500)) {
         lastMediaSignature = sig;
         lastBroadcastMediaTick = now;
         broadcastStateUpdate('audio_updated', audio);

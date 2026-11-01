@@ -6170,7 +6170,7 @@ namespace TahaBLT
             }
         }
 
-        private static List<GsmtcMediaSnapshot> QueryUserMediaWorker(double? seekPositionSec, string targetProcHint, string mediaCommandKey = null)
+        private static List<GsmtcMediaSnapshot> QueryUserMediaWorker(double? seekPositionSec, string targetProcHint, string mediaCommandKey = null, string targetTitleHint = null)
         {
             lock (userMediaWorkerLock)
             {
@@ -6188,6 +6188,7 @@ namespace TahaBLT
                         req["op"] = "snapshot";
                         if (seekPositionSec.HasValue) req["seek"] = seekPositionSec.Value;
                         if (!string.IsNullOrEmpty(targetProcHint)) req["hint"] = targetProcHint;
+                        if (!string.IsNullOrEmpty(targetTitleHint)) req["titleHint"] = targetTitleHint;
                     }
                     userMediaWriter.WriteLine(serializer.Serialize(req));
                     string line = userMediaReader.ReadLine();
@@ -6286,7 +6287,8 @@ namespace TahaBLT
                                     seek = Convert.ToDouble(req["seek"]);
                                 }
                                 string hint = req != null && req.ContainsKey("hint") ? Convert.ToString(req["hint"]) : null;
-                                var snaps = GetGsmtcSessionsSnapshot(seek, hint);
+                                string titleHint = req != null && req.ContainsKey("titleHint") ? Convert.ToString(req["titleHint"]) : null;
+                                var snaps = GetGsmtcSessionsSnapshot(seek, hint, titleHint);
                                 var outList = new List<Dictionary<string, object>>();
                                 foreach (var s in snaps)
                                 {
@@ -6436,15 +6438,23 @@ namespace TahaBLT
             }
         }
 
-        private static List<GsmtcMediaSnapshot> GetGsmtcSessionsSnapshot(double? seekPositionSec = null, string targetProcHint = null)
+        private static List<GsmtcMediaSnapshot> GetGsmtcSessionsSnapshot(double? seekPositionSec = null, string targetProcHint = null, string targetTitleHint = null)
         {
             if (!isUserMediaWorkerProcess && IsRunningAsSystemAccount())
             {
-                var workerSnaps = QueryUserMediaWorker(seekPositionSec, targetProcHint, null);
+                var workerSnaps = QueryUserMediaWorker(seekPositionSec, targetProcHint, null, targetTitleHint);
                 if (workerSnaps != null && workerSnaps.Count > 0)
                 {
                     lock (mediaSelectLock)
                     {
+                        if (seekPositionSec.HasValue)
+                        {
+                            double clamped = Math.Max(0.0, seekPositionSec.Value);
+                            lastSeekPositionSec = clamped;
+                            lastSeekWallUtc = DateTimeOffset.UtcNow;
+                            if (!string.IsNullOrEmpty(targetProcHint))
+                                lastSeekAppId = targetProcHint;
+                        }
                         lastValidGsmtcSnapshots = workerSnaps;
                         lastValidGsmtcUtc = DateTimeOffset.UtcNow;
                     }
@@ -6551,10 +6561,12 @@ namespace TahaBLT
                         lock (mediaSelectLock)
                         {
                             if (!string.IsNullOrEmpty(lastSeekAppId) &&
-                                string.Equals(appId, lastSeekAppId, StringComparison.OrdinalIgnoreCase))
+                                (string.Equals(appId, lastSeekAppId, StringComparison.OrdinalIgnoreCase) ||
+                                 appId.IndexOf(lastSeekAppId, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                 FriendlyMediaAppName(appId).IndexOf(lastSeekAppId, StringComparison.OrdinalIgnoreCase) >= 0))
                             {
                                 double sinceSeekSec = (DateTimeOffset.UtcNow - lastSeekWallUtc).TotalSeconds;
-                                if (sinceSeekSec >= 0.0 && sinceSeekSec < 2.8)
+                                if (sinceSeekSec >= 0.0 && sinceSeekSec < 3.6)
                                 {
                                     double expectedPos = lastSeekPositionSec + (isPlaying ? sinceSeekSec : 0.0);
                                     if (Math.Abs(posSec - expectedPos) > 1.8)
@@ -6600,7 +6612,11 @@ namespace TahaBLT
                             }
                         }
 
-                        if (IsJunkOrNonMediaTitle(title) && string.IsNullOrWhiteSpace(artist))
+                        if (!string.IsNullOrWhiteSpace(title) && IsJunkOrNonMediaTitle(title) && string.IsNullOrWhiteSpace(artist))
+                        {
+                            continue;
+                        }
+                        if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(artist) && durSec <= 0.0 && !isPlaying)
                         {
                             continue;
                         }
@@ -6632,37 +6648,85 @@ namespace TahaBLT
                 if (seekPositionSec.HasValue && seekMethod != null && result.Count > 0)
                 {
                     GsmtcMediaSnapshot targetSnap = null;
-                    if (!string.IsNullOrEmpty(targetProcHint))
+                    // 1. Prefer exact title + app match when titleHint is provided
+                    if (!string.IsNullOrEmpty(targetTitleHint))
                     {
+                        foreach (var snap in result)
+                        {
+                            if (!string.IsNullOrEmpty(snap.Title) &&
+                                (string.Equals(snap.Title, targetTitleHint, StringComparison.OrdinalIgnoreCase) ||
+                                 targetTitleHint.IndexOf(snap.Title, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                 snap.Title.IndexOf(targetTitleHint, StringComparison.OrdinalIgnoreCase) >= 0))
+                            {
+                                if (string.IsNullOrEmpty(targetProcHint) ||
+                                    snap.AppId.IndexOf(targetProcHint, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    FriendlyMediaAppName(snap.AppId).IndexOf(targetProcHint, StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    targetSnap = snap;
+                                    break;
+                                }
+                            }
+                        }
+                        if (targetSnap == null)
+                        {
+                            foreach (var snap in result)
+                            {
+                                if (!string.IsNullOrEmpty(snap.Title) &&
+                                    (string.Equals(snap.Title, targetTitleHint, StringComparison.OrdinalIgnoreCase) ||
+                                     targetTitleHint.IndexOf(snap.Title, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                     snap.Title.IndexOf(targetTitleHint, StringComparison.OrdinalIgnoreCase) >= 0))
+                                {
+                                    targetSnap = snap;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Next, prefer playing session matching targetProcHint, or any session matching targetProcHint
+                    if (targetSnap == null && !string.IsNullOrEmpty(targetProcHint))
+                    {
+                        GsmtcMediaSnapshot firstProcMatch = null;
                         foreach (var snap in result)
                         {
                             if (snap.AppId.IndexOf(targetProcHint, StringComparison.OrdinalIgnoreCase) >= 0 ||
                                 FriendlyMediaAppName(snap.AppId).IndexOf(targetProcHint, StringComparison.OrdinalIgnoreCase) >= 0)
                             {
-                                targetSnap = snap;
-                                break;
+                                if (firstProcMatch == null) firstProcMatch = snap;
+                                if (snap.IsPlaying)
+                                {
+                                    targetSnap = snap;
+                                    break;
+                                }
                             }
                         }
+                        if (targetSnap == null) targetSnap = firstProcMatch;
                     }
+
+                    // 3. Fallback to PickNowPlayingSession
                     if (targetSnap == null)
                     {
-                        targetSnap = PickNowPlayingSession(result);
+                        targetSnap = PickNowPlayingSession(result, targetProcHint);
                     }
+
                     if (targetSnap != null && targetSnap.SessionObj != null)
                     {
                         double clampedTarget = Math.Max(0.0, seekPositionSec.Value);
                         if (targetSnap.DurationSec > 0 && clampedTarget > targetSnap.DurationSec)
                             clampedTarget = targetSnap.DurationSec;
                         long baseTicks = startTicksBySession.ContainsKey(targetSnap.SessionObj) ? startTicksBySession[targetSnap.SessionObj] : 0L;
-                        long ticks = baseTicks + (long)(clampedTarget * 10000000.0);
+                        long ticks = baseTicks + (long)Math.Round(clampedTarget * 10000000.0);
                         lock (mediaSelectLock)
                         {
+                            stickyMediaAppId = targetSnap.AppId;
+                            if (!string.IsNullOrEmpty(targetSnap.Title))
+                                stickyMediaTitle = targetSnap.Title;
                             lastSeekAppId = targetSnap.AppId;
                             lastSeekPositionSec = clampedTarget;
                             lastSeekWallUtc = DateTimeOffset.UtcNow;
                         }
                         object seekOp = seekMethod.Invoke(targetSnap.SessionObj, new object[] { ticks });
-                        AwaitWinRtOperation(seekOp, boolType, 600);
+                        AwaitWinRtOperation(seekOp, boolType, 750);
                         targetSnap.PositionSec = Math.Round(clampedTarget, 1);
                     }
                 }
@@ -6887,6 +6951,7 @@ namespace TahaBLT
                 IAudioSessionManager2 sessionMgr = (IAudioSessionManager2)oMgr;
 
                 Guid emptyGuid = Guid.Empty;
+                List<GsmtcMediaSnapshot> preFetchedGsmtcSnaps = null;
 
                 if (action == "media_command")
                 {
@@ -6898,12 +6963,19 @@ namespace TahaBLT
                     double targetSec = args.ContainsKey("positionSec")
                         ? Convert.ToDouble(args["positionSec"])
                         : (args.ContainsKey("position") ? Convert.ToDouble(args["position"]) : 0.0);
-                    string procHint = args.ContainsKey("processName") ? Convert.ToString(args["processName"]) : "";
+                    string procHint = args.ContainsKey("sourceAppId") && !string.IsNullOrEmpty(Convert.ToString(args["sourceAppId"]))
+                        ? Convert.ToString(args["sourceAppId"])
+                        : (args.ContainsKey("processName") ? Convert.ToString(args["processName"]) : "");
+                    string titleHint = args.ContainsKey("title") ? Convert.ToString(args["title"]) : "";
                     if (string.IsNullOrEmpty(procHint))
                     {
                         lock (mediaSelectLock) { procHint = stickyMediaAppId; }
                     }
-                    GetGsmtcSessionsSnapshot(targetSec, procHint);
+                    if (string.IsNullOrEmpty(titleHint))
+                    {
+                        lock (mediaSelectLock) { titleHint = stickyMediaTitle; }
+                    }
+                    preFetchedGsmtcSnaps = GetGsmtcSessionsSnapshot(targetSec, procHint, titleHint);
                 }
                 else if (action == "set_master")
                 {
@@ -7263,7 +7335,8 @@ namespace TahaBLT
                     string audibleProcHint = bestAudibleCandidate != null && bestAudibleCandidate.ContainsKey("processName")
                         ? Convert.ToString(bestAudibleCandidate["processName"] ?? "")
                         : null;
-                    var pick = PickNowPlayingSession(GetGsmtcSessionsSnapshot(), audibleProcHint);
+                    var gsmtcList = preFetchedGsmtcSnaps ?? GetGsmtcSessionsSnapshot();
+                    var pick = PickNowPlayingSession(gsmtcList, audibleProcHint);
                     if (pick != null)
                     {
                         string songTitle = pick.Title ?? "";

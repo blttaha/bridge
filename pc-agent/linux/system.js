@@ -30,6 +30,9 @@ function createSystem(sys, desktop, input) {
     clipHistory: [],
     lastClipText: '',
     stickyPlayer: '',
+    lastSeekPlayer: '',
+    lastSeekSec: 0,
+    lastSeekTs: 0,
     fallbackTrackKey: '',
     fallbackPosSec: 0,
     fallbackLastTs: 0
@@ -449,6 +452,15 @@ function createSystem(sys, desktop, input) {
       let title = pick.title || '';
       if (pick.artist && !title.toLowerCase().includes(pick.artist.toLowerCase())) title = title ? `${pick.artist} - ${title}` : pick.artist;
       const match = sessions.find((s) => s.rawProcessName && pick.player.toLowerCase().includes(String(s.rawProcessName).toLowerCase()));
+      let posSec = pick.positionSec;
+      if (st.lastSeekPlayer === pick.player && st.lastSeekTs > 0) {
+        const sinceSeekSec = (sys.now() - st.lastSeekTs) / 1000;
+        if (sinceSeekSec >= 0 && sinceSeekSec < 3.6) {
+          const expected = st.lastSeekSec + (pick.isPlaying ? sinceSeekSec : 0);
+          if (Math.abs(posSec - expected) > 1.8) posSec = Math.round(expected * 10) / 10;
+        }
+      }
+      if (pick.durationSec > 0 && posSec > pick.durationSec) posSec = pick.durationSec;
       nowPlaying = {
         active: true,
         isPlaying: pick.isPlaying,
@@ -458,7 +470,7 @@ function createSystem(sys, desktop, input) {
         pid: match ? match.pid : 0,
         icon: match ? match.icon : desktop.iconForProcess(pick.player.split('.')[0]),
         sourceAppId: pick.player,
-        positionSec: pick.positionSec,
+        positionSec: posSec,
         durationSec: pick.durationSec
       };
     }
@@ -508,9 +520,25 @@ function createSystem(sys, desktop, input) {
     if (action === 'media_command') {
       await mediaCommand(args.key);
     } else if (action === 'seek') {
-      const sec = num(args.positionSec !== undefined ? args.positionSec : args.position, 0);
-      const pick = await currentPlayer();
-      if (pick) await sys.exec('playerctl', ['-p', pick.player, 'position', String(Math.max(0, sec))], { timeout: 2000 }).catch(() => {});
+      const sec = Math.max(0, num(args.positionSec !== undefined ? args.positionSec : args.position, 0));
+      const list = await players();
+      const hint = String(args.sourceAppId || args.processName || st.stickyPlayer || '').toLowerCase();
+      const titleHint = String(args.title || '').toLowerCase();
+      let pick = null;
+      if (titleHint) {
+        pick = list.find((p) => p.title && p.title.toLowerCase().includes(titleHint));
+      }
+      if (!pick && hint) {
+        pick = list.find((p) => p.player.toLowerCase().includes(hint) && p.isPlaying) || list.find((p) => p.player.toLowerCase().includes(hint));
+      }
+      if (!pick) pick = pickPlayer(list);
+      if (pick) {
+        st.stickyPlayer = pick.player;
+        st.lastSeekPlayer = pick.player;
+        st.lastSeekSec = sec;
+        st.lastSeekTs = sys.now();
+        await sys.exec('playerctl', ['-p', pick.player, 'position', String(sec)], { timeout: 2000 }).catch(() => {});
+      }
     } else if (action === 'set_default_device') {
       const devId = String(args.deviceId || '').trim();
       if (devId && sys.has('pactl')) {

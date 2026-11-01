@@ -3941,27 +3941,41 @@
   }
 
   let mediaSeekIntent = null;
+  let mediaSeekReqSeq = 0;
 
   function performMediaSeek(targetSec) {
-    const dur = state.audio && state.audio.nowPlaying ? Math.max(0, Number(state.audio.nowPlaying.durationSec || 0)) : 0;
+    const np = state.audio && state.audio.nowPlaying ? state.audio.nowPlaying : null;
+    const dur = np ? Math.max(0, Number(np.durationSec || 0)) : 0;
     const rawSec = Math.max(0, Math.round(Number(targetSec) || 0));
     const posSec = dur > 0 ? Math.min(dur, rawSec) : rawSec;
     const now = Date.now();
+    const mySeq = ++mediaSeekReqSeq;
     mediaSeekIntent = {
       positionSec: posSec,
       wallTs: now,
-      until: now + 3200
+      until: now + 4200
     };
-    if (state.audio && state.audio.nowPlaying) {
-      state.audio.nowPlaying.positionSec = posSec;
+    if (np) {
+      np.positionSec = posSec;
       state.lastMediaSyncWallTs = now;
     }
     updateMediaTimelineDom();
     state.lastMediaNotifHash = '';
     syncAndroidMediaNotification();
 
-    sendCommand('audio_control', { action: 'seek', positionSec: posSec }, 4000)
+    sendCommand(
+      'audio_control',
+      {
+        action: 'seek',
+        positionSec: posSec,
+        processName: (np && np.processName) || '',
+        sourceAppId: (np && np.sourceAppId) || '',
+        title: (np && np.title) || ''
+      },
+      4500
+    )
       .then((audio) => {
+        if (mySeq !== mediaSeekReqSeq) return;
         if (audio) {
           state.audio = reconcileMediaIntent(audio);
           state.lastMediaSyncWallTs = Date.now();
@@ -7395,7 +7409,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.20.2';
+    let currentAppVer = '2.20.3';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -9637,7 +9651,7 @@
           setTimeout(() => window.scrollTo(0, savedScrollY), 60);
           setTimeout(() => window.scrollTo(0, savedScrollY), 180);
         }
-        showToast('Canlı klavye aktif — yazdıklarınız anında PC ekranına iletilir');
+        showToast('Canlı klavye aktif');
       }
     };
     document.getElementById('remoteLiveKbdBtn').addEventListener('click', openLiveKeyboard);
@@ -10473,28 +10487,35 @@
     const mediaSeekSlider = document.getElementById('mediaSeekSlider');
     if (mediaSeekSlider) {
       let lastSeekCommitTs = 0;
+      let lastTouchSeekEndTs = 0;
+      let pendingTouchSeekSec = 0;
+
       const commitMediaSeek = (rawSec) => {
+        state.isSeekingMedia = false;
         const now = performance.now();
-        if (now - lastSeekCommitTs < 80) return;
+        if (now - lastSeekCommitTs < 60) return;
         lastSeekCommitTs = now;
         const targetSec = Math.max(0, Math.round(Number(rawSec) || 0));
-        state.isSeekingMedia = false;
         triggerHaptic(8);
         performMediaSeek(targetSec);
       };
 
       const updateSeekFromClientX = (clientX) => {
-        if (mediaSeekSlider.disabled) return;
+        if (mediaSeekSlider.disabled) return 0;
         const rect = mediaSeekSlider.getBoundingClientRect();
-        if (!rect || rect.width <= 0) return;
+        if (!rect || rect.width <= 0) return Number(mediaSeekSlider.value || 0);
         const min = Number(mediaSeekSlider.min || 0);
         const max = Number(mediaSeekSlider.max || 100);
-        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        const thumbRadius = 7.5;
+        const usableWidth = Math.max(1, rect.width - thumbRadius * 2);
+        const ratio = Math.max(0, Math.min(1, (clientX - (rect.left + thumbRadius)) / usableWidth));
         const val = Math.round(min + ratio * (max - min));
+        pendingTouchSeekSec = val;
         mediaSeekSlider.value = val;
         syncSliderFillPct(mediaSeekSlider);
         const curEl = document.getElementById('mediaCurrentTime');
         if (curEl) curEl.textContent = formatMediaTime(val);
+        return val;
       };
 
       mediaSeekSlider.addEventListener(
@@ -10502,12 +10523,13 @@
         (e) => {
           if (document.body.classList.contains('layout-edit-mode') || mediaSeekSlider.disabled) return;
           e.stopPropagation();
+          if (e.cancelable) e.preventDefault();
           state.isSeekingMedia = true;
           if (e.touches && e.touches[0]) {
             updateSeekFromClientX(e.touches[0].clientX);
           }
         },
-        { passive: true }
+        { passive: false }
       );
 
       mediaSeekSlider.addEventListener(
@@ -10528,17 +10550,20 @@
         (e) => {
           if (!state.isSeekingMedia) return;
           e.stopPropagation();
+          if (e.cancelable) e.preventDefault();
+          lastTouchSeekEndTs = performance.now();
           if (e.changedTouches && e.changedTouches[0]) {
             updateSeekFromClientX(e.changedTouches[0].clientX);
           }
-          commitMediaSeek(mediaSeekSlider.value);
+          commitMediaSeek(pendingTouchSeekSec);
         },
-        { passive: true }
+        { passive: false }
       );
 
       mediaSeekSlider.addEventListener(
         'touchcancel',
         () => {
+          lastTouchSeekEndTs = performance.now();
           state.isSeekingMedia = false;
           updateMediaTimelineDom();
         },
@@ -10546,12 +10571,12 @@
       );
 
       mediaSeekSlider.addEventListener('mousedown', () => {
-        if (mediaSeekSlider.disabled) return;
+        if (mediaSeekSlider.disabled || performance.now() - lastTouchSeekEndTs < 800) return;
         state.isSeekingMedia = true;
       });
 
       mediaSeekSlider.addEventListener('input', () => {
-        if (mediaSeekSlider.disabled) return;
+        if (mediaSeekSlider.disabled || performance.now() - lastTouchSeekEndTs < 800) return;
         state.isSeekingMedia = true;
         syncSliderFillPct(mediaSeekSlider);
         const curEl = document.getElementById('mediaCurrentTime');
@@ -10559,7 +10584,7 @@
       });
 
       mediaSeekSlider.addEventListener('change', () => {
-        if (mediaSeekSlider.disabled) return;
+        if (mediaSeekSlider.disabled || performance.now() - lastTouchSeekEndTs < 800) return;
         commitMediaSeek(mediaSeekSlider.value);
       });
     }
