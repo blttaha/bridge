@@ -6760,13 +6760,17 @@ namespace TahaBLT
             var fallback = new Dictionary<string, object>();
             try
             {
+                string safeMode = (mode ?? "status").Replace("'", "");
+                string safeP1 = (param1 ?? "").Replace("'", "");
+                string safeP2 = (param2 ?? "").Replace("'", "");
+
                 // Execute a fast hidden PowerShell WinRT script for Radio & Tethering management
                 string psScript = @"
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$mode = $args[0]
-$p1 = $args[1]
-$p2 = $args[2]
+$mode = '" + safeMode + @"'
+$p1 = '" + safeP1 + @"'
+$p2 = '" + safeP2 + @"'
 
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
@@ -6774,7 +6778,7 @@ Function Await-WinRt($op, $type) {
     if ($null -eq $op) { return $null }
     $generic = $asTaskGeneric.MakeGenericMethod($type)
     $t = $generic.Invoke($null, @($op))
-    $t.Wait(3500) | Out-Null
+    $t.Wait(4000) | Out-Null
     return $t.Result
 }
 
@@ -6810,18 +6814,26 @@ if ($null -ne $profile) {
 if ($mode -eq 'wifi_toggle' -and $null -ne $wifiRadio) {
     $target = if ($p1 -eq 'true') { $radioStateType::On } else { $radioStateType::Off }
     Await-WinRt ($wifiRadio.SetStateAsync($target)) $radioAccessType | Out-Null
+    Start-Sleep -Milliseconds 250
 }
 elseif ($mode -eq 'bt_toggle' -and $null -ne $btRadio) {
     $target = if ($p1 -eq 'true') { $radioStateType::On } else { $radioStateType::Off }
     Await-WinRt ($btRadio.SetStateAsync($target)) $radioAccessType | Out-Null
+    Start-Sleep -Milliseconds 250
 }
 elseif ($mode -eq 'hotspot_toggle' -and $null -ne $tetherMgr) {
-    if ($p1 -eq 'true') {
+    $wantOn = ($p1 -eq 'true')
+    if ($wantOn) {
         Await-WinRt ($tetherMgr.StartTetheringAsync()) $tetherResType | Out-Null
     } else {
         Await-WinRt ($tetherMgr.StopTetheringAsync()) $tetherResType | Out-Null
     }
-    Start-Sleep -Milliseconds 350
+    for ($w = 0; $w -lt 12; $w++) {
+        Start-Sleep -Milliseconds 180
+        $stNow = $tetherMgr.TetheringOperationalState.ToString()
+        if ($wantOn -and $stNow -eq 'On') { break }
+        if ((-not $wantOn) -and $stNow -eq 'Off') { break }
+    }
 }
 
 $hsSupported = ($null -ne $tetherMgr)
@@ -6830,29 +6842,20 @@ $hsSsid = ''
 $hsClients = 0
 if ($null -ne $tetherMgr) {
     try {
-        $hsEnabled = ($tetherMgr.TetheringOperationalState.ToString() -eq 'On' -or $tetherMgr.TetheringOperationalState.ToString() -eq 'InTransition')
+        $stStr = $tetherMgr.TetheringOperationalState.ToString()
+        $hsEnabled = ($stStr -eq 'On' -or ($stStr -eq 'InTransition' -and $p1 -ne 'false'))
         $hsClients = [int]$tetherMgr.ClientCount
         $cfg = $tetherMgr.GetCurrentAccessPointConfiguration()
         if ($null -ne $cfg) { $hsSsid = [string]$cfg.Ssid }
     } catch {}
 }
 
-$btDevices = @()
-try {
-    $pnp = Get-PnpDevice -Class Bluetooth -Status OK -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -and $_.FriendlyName -notmatch 'Enumerator|Adapter|Radio|RFCOMM|Generic|Service|Protocol|Transport|A2DP|AVRCP|Hands-Free' }
-    foreach ($d in $pnp) {
-        if ($btDevices.Count -lt 8 -and ($btDevices -notcontains $d.FriendlyName)) {
-            $btDevices += [string]$d.FriendlyName
-        }
-    }
-} catch {}
-
 $out = @{
     wifiRadioSupported = ($null -ne $wifiRadio)
     wifiRadioOn = if ($null -ne $wifiRadio) { $wifiRadio.State.ToString() -eq 'On' } else { $false }
     btSupported = ($null -ne $btRadio)
     btOn = if ($null -ne $btRadio) { $btRadio.State.ToString() -eq 'On' } else { $false }
-    btDevices = $btDevices
+    btDevices = @()
     hotspotSupported = $hsSupported
     hotspotEnabled = $hsEnabled
     hotspotSsid = $hsSsid
@@ -6861,12 +6864,10 @@ $out = @{
 ConvertTo-Json $out -Compress
 ";
                 string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(psScript));
-                string safeP1 = (param1 ?? "").Replace("\"", "");
-                string safeP2 = (param2 ?? "").Replace("\"", "");
                 string rawJson = RunHiddenToolCapture(
                     "powershell.exe",
-                    "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand " + encoded + " \"" + mode + "\" \"" + safeP1 + "\" \"" + safeP2 + "\"",
-                    5000
+                    "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand " + encoded,
+                    7000
                 ).Trim();
 
                 if (!string.IsNullOrEmpty(rawJson))
@@ -7001,13 +7002,15 @@ ConvertTo-Json $out -Compress
                         bestSignal = 0;
                         if (!string.IsNullOrEmpty(currentSsid) && !bySsid.ContainsKey(currentSsid))
                         {
+                            bool isConn = !string.IsNullOrEmpty(currentConnectedSsid) && string.Equals(currentSsid, currentConnectedSsid, StringComparison.OrdinalIgnoreCase);
                             bySsid[currentSsid] = new Dictionary<string, object>
                             {
                                 { "ssid", currentSsid },
                                 { "security", "WPA2" },
                                 { "signal", 0 },
                                 { "isSaved", savedProfiles.Contains(currentSsid) },
-                                { "isConnected", !string.IsNullOrEmpty(currentConnectedSsid) && string.Equals(currentSsid, currentConnectedSsid, StringComparison.OrdinalIgnoreCase) }
+                                { "isConnected", isConn },
+                                { "connected", isConn }
                             };
                         }
                     }
@@ -7168,11 +7171,30 @@ ConvertTo-Json $out -Compress
                 networks = ScanWifiNetworksList(currentSsid);
             }
 
+            bool hsEnabledVal = winRt.ContainsKey("hotspotEnabled") && Convert.ToBoolean(winRt["hotspotEnabled"]);
+            if (!hsEnabledVal && action != "hotspot_toggle")
+            {
+                try
+                {
+                    foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+                    {
+                        if (ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                            ni.Description != null &&
+                            ni.Description.IndexOf("Wi-Fi Direct Virtual Adapter", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            hsEnabledVal = true;
+                            break;
+                        }
+                    }
+                }
+                catch { }
+            }
+
             var hotspotInfo = new Dictionary<string, object>
             {
                 { "supported", winRt.ContainsKey("hotspotSupported") ? Convert.ToBoolean(winRt["hotspotSupported"]) : true },
-                { "enabled", winRt.ContainsKey("hotspotEnabled") && Convert.ToBoolean(winRt["hotspotEnabled"]) },
-                { "ssid", winRt.ContainsKey("hotspotSsid") ? Convert.ToString(winRt["hotspotSsid"]) : Environment.MachineName },
+                { "enabled", hsEnabledVal },
+                { "ssid", winRt.ContainsKey("hotspotSsid") && !string.IsNullOrEmpty(Convert.ToString(winRt["hotspotSsid"])) ? Convert.ToString(winRt["hotspotSsid"]) : Environment.MachineName },
                 { "clients", winRt.ContainsKey("hotspotClients") ? Convert.ToInt32(winRt["hotspotClients"]) : 0 }
             };
 

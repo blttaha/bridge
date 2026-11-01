@@ -230,7 +230,7 @@
 
                 <div class="setting-action-row">
                   <div class="setting-meta">
-                    <span class="setting-title" id="updateVersionTitle">Bridge v2.17.0</span>
+                    <span class="setting-title" id="updateVersionTitle">Bridge v2.18.0</span>
                     <span class="setting-desc" id="updateStatusCaption">GitHub (blttaha/bridge) üzerinden mobil ve masaüstü sürümlerini denetleyin</span>
                   </div>
                   <button type="button" class="btn-compact btn-secondary" id="btnCheckUpdatesSetting">Denetle</button>
@@ -378,36 +378,27 @@
           </div>
 
           <div class="section-block">
-            <div class="section-header-stack">
-              <div class="section-header-top">
-                <h1 class="section-title-lg">Çalışma Sahneleri</h1>
-                <div class="header-btn-group">
-                  <button type="button" class="icon-btn icon-btn-sm" id="snapshotSceneBtn" title="Mevcut Düzeni Yakala" aria-label="Yakala">
-                    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <path d="M2.5 6A1.5 1.5 0 0 1 4 4.5h2l1.2-1.5h3.6L12 4.5h2A1.5 1.5 0 0 1 15.5 6v7.5A1.5 1.5 0 0 1 14 15H4a1.5 1.5 0 0 1-1.5-1.5V6z" stroke-linejoin="round" />
-                      <circle cx="9" cy="9.5" r="2.5" />
-                    </svg>
-                  </button>
-                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="newSceneBtn" title="Yeni Sahne Oluştur" aria-label="Yeni Sahne">
-                    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <path d="M9 3.5v11M3.5 9h11" stroke-linecap="round" />
-                    </svg>
-                  </button>
+            <button type="button" class="subpage-nav-card" id="openScenesManagerModalBtn">
+              <div class="subpage-nav-left">
+                <div class="subpage-nav-icon">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <rect x="2.5" y="3.5" width="15" height="10.5" rx="1.5" />
+                    <path d="M9.5 3.5v10.5M2.5 8.8h7" stroke-linecap="round" />
+                    <path d="M6.5 17h7" stroke-linecap="round" />
+                  </svg>
+                </div>
+                <div class="subpage-nav-meta">
+                  <span class="subpage-nav-title">Çalışma Sahneleri</span>
+                  <span class="subpage-nav-sub">Çoklu uygulama başlatma ve ekran konumlandırma şablonları</span>
                 </div>
               </div>
-              <p class="section-subtitle">Tek dokunuşla çoklu uygulama başlatma ve ekran konumlandırma</p>
-            </div>
-
-            <!-- Empty State (Zero Default Scenes) -->
-            <div class="empty-state-box" id="scenesEmptyState">
-              <div class="empty-wireframe" id="emptyWireframeMonitors"></div>
-              <h3 class="empty-title">Bu bilgisayarda kayıtlı sahne yok</h3>
-              <p class="empty-desc">
-                Şu an açık olan pencerelerin hangi ekranda ve hangi köşede olduğunu sağ üstteki kamera simgesiyle yakalayabilir veya artı simgesiyle sıfırdan sahne oluşturabilirsiniz.
-              </p>
-            </div>
-
-            <div class="scenes-grid hidden" id="scenesListContainer"></div>
+              <div class="subpage-nav-right">
+                <span class="subpage-count-pill" id="scenesNavCountBadge">0 Sahne</span>
+                <svg class="subpage-chevron" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M7.5 4.5L13 10l-5.5 5.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </div>
+            </button>
           </div>
         </section>
 
@@ -450,70 +441,19 @@
           </div>
         </section>
 
-        <!-- TAB 3: EKRANLAR & CANLI PENCERELER -->
-        <section class="tab-panel" id="tab-monitors">
-          <div class="section-block">
-            <div class="section-header-stack">
-              <div class="section-header-top">
-                <h1 class="section-title-lg">Monitör Topolojisi</h1>
-                <div class="header-btn-group">
-                  <button type="button" class="icon-btn icon-btn-sm" id="allMonitorsOffBtn" title="Tüm Ekranları Kapat" aria-label="Tümünü Kapat">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
-                      <path d="M7 16.5h6M10 13.5v3M3.5 3.5l13 13" stroke-linecap="round" />
-                    </svg>
-                  </button>
-                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="allMonitorsOnBtn" title="Tüm Ekranları Aç" aria-label="Tümünü Aç">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-                      <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
-                      <path d="M7 16.5h6M10 13.5v3" stroke-linecap="round" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="monitors-topology-grid" id="monitorsContainer"></div>
-
-            <div class="sub-panel">
-              <div class="sub-panel-header">
-                <span class="sub-panel-title">Windows Görüntü Yansıtma Modu</span>
-              </div>
-              <div class="segmented-row">
-                <button type="button" class="segment-btn" data-topology="extend">Uzat (Çift Ekran)</button>
-                <button type="button" class="segment-btn" data-topology="internal">Sadece 1. Ekran</button>
-                <button type="button" class="segment-btn" data-topology="external">Sadece 2. Ekran</button>
-                <button type="button" class="segment-btn" data-topology="clone">Yinele</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="section-block">
-            <div class="section-header-row">
-              <div>
-                <h2 class="section-title">Canlı Pencere ve Görev Yöneticisi</h2>
-                <p class="section-subtitle">Tek tuşla başka monitöre gönderin, büyütün veya kapatın</p>
-              </div>
-              <button type="button" class="icon-btn icon-btn-sm" id="refreshWindowsBtn" title="Pencereleri Yenile" aria-label="Pencereleri Yenile">
-                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
-                  <path d="M14.8 9a5.8 5.8 0 1 1-1.7-4.1L14.8 6.5M14.8 3.2v3.3h-3.3" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </button>
-            </div>
-            <div class="open-windows-list" id="openWindowsContainer"></div>
-          </div>
-        </section>
-
-        <!-- TAB 3: UZAKTAN KONTROL (CHROME REMOTE DESKTOP GRADE WORKSTATION) -->
+        <!-- TAB 3: KONTROL (EKRANSIZ MOUSE/TRACKPAD, CANLI MASAÜSTÜ, EKRANLAR & PENCERELER) -->
         <section class="tab-panel" id="tab-remote">
           <div class="remote-workstation" id="remoteWorkstation">
-            <!-- Top Remote Bar: Monitor Switcher + Icon-Only Mouse/Touch Mode + Fullscreen & Keyboard -->
+            <!-- Top Remote Bar: Monitor Switcher + Stream Toggle + Mouse/Touch Mode + Fullscreen & Keyboard -->
             <div class="remote-header-bar">
               <div class="remote-mon-tabs" id="remoteMonitorSelector"></div>
 
               <div class="remote-header-right">
+                <button type="button" class="btn-secondary btn-compact stream-toggle-pill" id="toggleStreamHeaderBtn" title="Canlı Ekran Aktarımını Başlat / Durdur">
+                  Ekranı Aç
+                </button>
                 <div class="remote-mode-toggle" title="Kontrol Modu">
-                  <button type="button" class="icon-btn icon-btn-sm mode-icon-btn active" id="modeTrackpadBtn" title="Fare İmleci Modu" aria-label="Fare İmleci Modu">
+                  <button type="button" class="icon-btn icon-btn-sm mode-icon-btn active" id="modeTrackpadBtn" title="Fare İmleci (Trackpad) Modu" aria-label="Fare İmleci Modu">
                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                       <path d="M4.5 3L15.5 9.5L10.2 11.1L7.8 16.5L4.5 3Z" stroke-linejoin="round" />
                     </svg>
@@ -550,7 +490,7 @@
               aria-label="Canlı Klavye Girişi"
             />
 
-            <!-- Interactive Desktop Viewport (Supports Trackpad Mouse Cursor, Direct Touch, Hold-to-Drag, Pinch-to-Zoom) -->
+            <!-- Interactive Desktop & Screenless Trackpad Viewport -->
             <div class="remote-viewport-box" id="remoteViewportBox">
               <!-- Floating HUD for Fullscreen Mode -->
               <div class="remote-floating-hud hidden" id="remoteFloatingHud">
@@ -576,21 +516,33 @@
 
               <!-- Top-Left Live Stream Status Badge -->
               <div class="remote-overlay-badges">
-                <span class="remote-stat-pill" id="remoteFpsBadge">60 FPS HAZIR</span>
+                <span class="remote-stat-pill" id="remoteFpsBadge">TRACKPAD · HAZIR</span>
                 <span class="remote-stat-pill remote-drag-badge hidden" id="remoteDragStateBadge">BASILI TUTULUYOR</span>
               </div>
 
               <!-- Stream diagnostics (tap the FPS badge): PC, network and phone numbers side by side -->
               <pre class="remote-stats-panel hidden" id="remoteStatsPanel"></pre>
 
-              <!-- Placeholder when stream is paused -->
-              <div class="remote-placeholder" id="remotePlaceholder">
-                <p class="remote-placeholder-title">Uzaktan Masaüstü Hazır</p>
-                <p class="remote-placeholder-sub">
-                  Fare modunda imleci hareket ettirebilir, Dokunmatik modda ise doğrudan dokunduğunuz noktaya tıklayıp sürükleyebilirsiniz.
-                </p>
-                <button type="button" class="btn-primary" id="startStreamBtn">Canlı Masaüstünü Başlat</button>
+              <!-- Screenless Trackpad Overlay (Shown when live video stream is off) -->
+              <div class="remote-placeholder trackpad-surface-overlay" id="remotePlaceholder">
+                <div class="trackpad-center-hint">
+                  <svg class="trackpad-hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M5.5 3.5L18.5 11L12.2 13L9.3 19.5L5.5 3.5Z" stroke-linejoin="round" />
+                  </svg>
+                  <p class="remote-placeholder-title">Dokunmatik Mouse (Trackpad)</p>
+                  <p class="remote-placeholder-sub">
+                    Parmağınızı bu alanda gezdirerek PC faresini ekransız yönetin. Tek dokunuş: Sol Tık · Çift parmak: Sağ Tık ve Kaydırma.
+                  </p>
+                </div>
+                <button type="button" class="btn-primary btn-compact" id="startStreamBtn">Canlı Ekran Aktarımını Başlat</button>
               </div>
+            </div>
+
+            <!-- Dedicated Mouse Click Buttons Row (Works in both Screenless Trackpad and Live Stream modes) -->
+            <div class="mouse-buttons-bar" id="trackpadMouseButtonsRow">
+              <button type="button" class="mouse-hw-btn" data-mouse-btn="left">Sol Tık</button>
+              <button type="button" class="mouse-hw-btn mouse-hw-mid" data-mouse-btn="middle">Orta Tık</button>
+              <button type="button" class="mouse-hw-btn" data-mouse-btn="right">Sağ Tık</button>
             </div>
 
             <!-- Pro Keyboard & Shortcut Deck -->
@@ -660,6 +612,58 @@
                 <button type="button" class="kbd-btn" data-key="F12">F12</button>
               </div>
             </div>
+          </div>
+
+          <!-- EKRANLAR & CANLI PENCERELER (MERGED INTO KONTROL TAB BELOW REMOTE WORKSTATION) -->
+          <div class="section-block control-monitors-section">
+            <div class="section-header-stack">
+              <div class="section-header-top">
+                <h2 class="section-title">Monitör Topolojisi</h2>
+                <div class="header-btn-group">
+                  <button type="button" class="icon-btn icon-btn-sm" id="allMonitorsOffBtn" title="Tüm Ekranları Kapat" aria-label="Tümünü Kapat">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
+                      <path d="M7 16.5h6M10 13.5v3M3.5 3.5l13 13" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                  <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="allMonitorsOnBtn" title="Tüm Ekranları Aç" aria-label="Tümünü Aç">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                      <rect x="2.5" y="3.5" width="15" height="10" rx="1.5" />
+                      <path d="M7 16.5h6M10 13.5v3" stroke-linecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="monitors-topology-grid" id="monitorsContainer"></div>
+
+            <div class="sub-panel">
+              <div class="sub-panel-header">
+                <span class="sub-panel-title">Windows Görüntü Yansıtma Modu</span>
+              </div>
+              <div class="segmented-row">
+                <button type="button" class="segment-btn" data-topology="extend">Uzat (Çift Ekran)</button>
+                <button type="button" class="segment-btn" data-topology="internal">Sadece 1. Ekran</button>
+                <button type="button" class="segment-btn" data-topology="external">Sadece 2. Ekran</button>
+                <button type="button" class="segment-btn" data-topology="clone">Yinele</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-block">
+            <div class="section-header-row">
+              <div>
+                <h2 class="section-title">Açık Pencereler</h2>
+                <p class="section-subtitle">Tek tuşla başka monitöre gönderin, büyütün veya kapatın</p>
+              </div>
+              <button type="button" class="icon-btn icon-btn-sm" id="refreshWindowsBtn" title="Pencereleri Yenile" aria-label="Pencereleri Yenile">
+                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M14.8 9a5.8 5.8 0 1 1-1.7-4.1L14.8 6.5M14.8 3.2v3.3h-3.3" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
+            <div class="open-windows-list" id="openWindowsContainer"></div>
           </div>
         </section>
 
@@ -942,26 +946,6 @@
           <div class="section-block">
             <div class="section-header-row">
               <div>
-                <h2 class="section-title">Sistem Kaynakları ve Süreçler</h2>
-                <p class="section-subtitle" id="sysDiskAndBatterySubtitle">Canlı donanım durumu ve açık süreç yönetimi</p>
-              </div>
-              <button type="button" class="btn-secondary btn-compact" id="openTaskManagerModalBtn">Görev Yöneticisi</button>
-            </div>
-            <div class="sub-panel sys-telemetry-panel" id="sysTelemetrySummaryBox">
-              <div class="telemetry-mini-row">
-                <span class="telemetry-mini-label">Disk Durumu</span>
-                <span class="mono-stat" id="sysDiskStatusText">--</span>
-              </div>
-              <div class="telemetry-mini-row" id="sysBatteryRow">
-                <span class="telemetry-mini-label">Güç / Batarya</span>
-                <span class="mono-stat" id="sysBatteryStatusText">Masaüstü AC</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="section-block">
-            <div class="section-header-row">
-              <div>
                 <h2 class="section-title">Pano Köprüsü</h2>
               </div>
               <button type="button" class="btn-secondary btn-compact" id="pullClipboardBtn">Panoyu Kopyala</button>
@@ -1035,7 +1019,7 @@
       </div>
     </main>
 
-    <!-- BOTTOM ARCHITECTURAL NAVIGATION (Shown ONLY when inside a connected PC workspace!) -->
+    <!-- BOTTOM ARCHITECTURAL NAVIGATION (4 TABS: Hızlı Erişim, Uygulamalar, Kontrol, Sistem) -->
     <nav class="bottom-nav hidden" id="bottomNav" aria-label="Cihaz İçi Menü">
       <span class="nav-active-indicator" id="navActiveIndicator" aria-hidden="true"></span>
       <button type="button" class="nav-item active" data-tab="tab-scenes">
@@ -1045,7 +1029,7 @@
           <rect x="2.5" y="11" width="6.5" height="6.5" rx="1" />
           <rect x="11" y="11" width="6.5" height="6.5" rx="1" />
         </svg>
-        <span class="nav-label">Sahneler</span>
+        <span class="nav-label">Hızlı Erişim</span>
       </button>
 
       <button type="button" class="nav-item" data-tab="tab-apps">
@@ -1058,20 +1042,13 @@
         <span class="nav-label">Uygulamalar</span>
       </button>
 
-      <button type="button" class="nav-item" data-tab="tab-monitors">
+      <button type="button" class="nav-item" data-tab="tab-remote">
         <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
           <rect x="2" y="3.5" width="16" height="10.5" rx="1.5" />
           <path d="M6.5 17h7M10 14v3" stroke-linecap="round" />
+          <circle cx="10" cy="8.8" r="1.6" />
         </svg>
-        <span class="nav-label">Ekranlar</span>
-      </button>
-
-      <button type="button" class="nav-item" data-tab="tab-remote">
-        <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M4 7V4h3M16 7V4h-3M4 13v3h3M16 13v3h-3" stroke-linecap="round" stroke-linejoin="round" />
-          <circle cx="10" cy="10" r="2" />
-        </svg>
-        <span class="nav-label">Uzaktan</span>
+        <span class="nav-label">Kontrol</span>
       </button>
 
       <button type="button" class="nav-item" data-tab="tab-system">
@@ -1866,21 +1843,27 @@
       </div>
     </div>
 
-    <!-- MODAL 14: LIVE MINI TASK MANAGER (PROCESSES & FORCE KILL) -->
-    <div class="modal-backdrop hidden" id="taskManagerModal">
+    <!-- MODAL 14: ÇALIŞMA SAHNELERİ YÖNETİCİSİ (OPENED FROM HIZLI ERİŞİM) -->
+    <div class="modal-backdrop hidden" id="scenesManagerModal">
       <div class="modal-sheet modal-sheet-large">
         <div class="modal-header">
           <div>
-            <h2 class="modal-title">PC Görev Yöneticisi</h2>
-            <p class="modal-subtitle">Yüksek bellek kullanan veya yanıt vermeyen süreçleri sonlandırın</p>
+            <h2 class="modal-title">Çalışma Sahneleri</h2>
+            <p class="modal-subtitle">Tek dokunuşla çoklu uygulama başlatma ve ekran konumlandırma</p>
           </div>
           <div class="header-btn-group">
-            <button type="button" class="icon-btn icon-btn-sm" id="refreshProcessesModalBtn" title="Yenile" aria-label="Yenile">
+            <button type="button" class="icon-btn icon-btn-sm" id="snapshotSceneBtn" title="Mevcut Düzeni Yakala" aria-label="Yakala">
               <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="M14.8 9a5.8 5.8 0 1 1-1.7-4.1L14.8 6.5M14.8 3.2v3.3h-3.3" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M2.5 6A1.5 1.5 0 0 1 4 4.5h2l1.2-1.5h3.6L12 4.5h2A1.5 1.5 0 0 1 15.5 6v7.5A1.5 1.5 0 0 1 14 15H4a1.5 1.5 0 0 1-1.5-1.5V6z" stroke-linejoin="round" />
+                <circle cx="9" cy="9.5" r="2.5" />
               </svg>
             </button>
-            <button type="button" class="icon-btn" id="closeTaskManagerModalBtn" aria-label="Kapat">
+            <button type="button" class="icon-btn icon-btn-sm icon-btn-primary" id="newSceneBtn" title="Yeni Sahne Oluştur" aria-label="Yeni Sahne">
+              <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M9 3.5v11M3.5 9h11" stroke-linecap="round" />
+              </svg>
+            </button>
+            <button type="button" class="icon-btn" id="closeScenesManagerModalBtn" aria-label="Kapat">
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M5 5l10 10M15 5L5 15" stroke-linecap="round" />
               </svg>
@@ -1888,7 +1871,14 @@
           </div>
         </div>
         <div class="modal-body">
-          <div class="fs-entries-list" id="processesListContainer"></div>
+          <div class="empty-state-box" id="scenesEmptyState">
+            <div class="empty-wireframe" id="emptyWireframeMonitors"></div>
+            <h3 class="empty-title">Bu bilgisayarda kayıtlı sahne yok</h3>
+            <p class="empty-desc">
+              Şu an açık olan pencerelerin hangi ekranda ve hangi köşede olduğunu üstteki kamera simgesiyle yakalayabilir veya artı simgesiyle sıfırdan sahne oluşturabilirsiniz.
+            </p>
+          </div>
+          <div class="scenes-grid hidden" id="scenesListContainer"></div>
         </div>
       </div>
     </div>

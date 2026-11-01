@@ -164,7 +164,7 @@
     mediaTimelineTickTimer: null
   };
 
-  const TAB_ORDER = ['tab-scenes', 'tab-apps', 'tab-monitors', 'tab-remote', 'tab-system'];
+  const TAB_ORDER = ['tab-scenes', 'tab-apps', 'tab-remote', 'tab-system'];
   const HUB_TAB_ORDER = ['hub-tab-devices', 'hub-tab-settings'];
   const modalCloseTimers = new Map();
 
@@ -209,6 +209,7 @@
   }
 
   function switchToTab(targetTab, animate = true) {
+    if (targetTab === 'tab-monitors') targetTab = 'tab-remote';
     const idx = TAB_ORDER.indexOf(targetTab);
     if (idx < 0) return;
 
@@ -253,9 +254,7 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    if (targetTab === 'tab-remote' && !state.isStreaming && state.isAuthenticated) {
-      startRemoteStream();
-    } else if (targetTab !== 'tab-remote' && state.isStreaming) {
+    if (targetTab !== 'tab-remote' && state.isStreaming) {
       stopRemoteStream();
     }
 
@@ -1497,7 +1496,7 @@
           try { ws.close(); } catch {}
           throw new Error('Hedef cihaz kimliği uyuşmuyor');
         }
-        const wasStreamingBefore = state.isStreaming || state.activeTab === 'tab-remote';
+        const wasStreamingBefore = state.isStreaming;
         const firstAuthNow = !state.isAuthenticated;
         state.isAuthenticated = true;
         state.isInitialConnecting = false;
@@ -1546,24 +1545,11 @@
         if (wasStreamingBefore && state.activeTab === 'tab-remote') {
           startRemoteStream();
         } else {
-          // Always fetch a fresh frame for the newly authenticated PC so Uzaktan tab shows THIS device's own screen!
-          sendCommand(
-            'capture_frame',
-            {
-              monitorIndex: state.remoteMonitorIndex,
-              maxWidth: 1600,
-              quality: 78,
-              drawCursor: true
-            },
-            4000
-          )
-            .then((frame) => {
-              if (state.ws === ws && state.activeDeviceId === dev.deviceId && frame && frame.jpeg) {
-                handleIncomingScreenFrame(frame);
-              }
-            })
-            .catch(() => {});
+          state.isStreaming = false;
+          state.hasReceivedFrameOnce = false;
+          updateStreamUiState();
         }
+        refreshWirelessStatus(true);
 
         // Fetch installed apps with real high-res icons in background
         try {
@@ -2006,38 +1992,10 @@
     renderRemoteMonitorPills();
     renderAudioTab();
     renderPowerTimerStatus();
-    renderSystemTelemetry();
     if (state.wirelessStatus) {
       renderWirelessStatus(state.wirelessStatus);
     } else if (state.isAuthenticated) {
       refreshWirelessStatus(true);
-    }
-  }
-
-  function renderSystemTelemetry() {
-    const diskEl = document.getElementById('sysDiskStatusText');
-    const batEl = document.getElementById('sysBatteryStatusText');
-    const st = state.stats || {};
-    if (diskEl) {
-      const disks = Array.isArray(st.disks) ? st.disks : [];
-      if (disks.length > 0) {
-        diskEl.textContent = disks
-          .slice(0, 2)
-          .map((d) => `${d.drive || 'Disk'} ${d.freeGb} GB boş / ${d.totalGb} GB (%${d.usedPercent})`)
-          .join(' · ');
-      } else {
-        const ram = typeof st.memoryPercent === 'number' ? st.memoryPercent : 0;
-        const usedRam = st.usedRamGb ? `${st.usedRamGb} / ${st.totalRamGb} GB (%${ram})` : `%${ram}`;
-        diskEl.textContent = `RAM: ${usedRam}`;
-      }
-    }
-    if (batEl) {
-      const bat = st.battery;
-      if (bat && bat.hasBattery && typeof bat.percent === 'number' && bat.percent >= 0) {
-        batEl.textContent = `%${bat.percent} · ${bat.isCharging ? 'Şarj Oluyor' : 'Pilde'}`;
-      } else {
-        batEl.textContent = 'Masaüstü AC Güç';
-      }
     }
   }
 
@@ -2284,6 +2242,11 @@
   }
 
   function renderScenesList() {
+    const countBadge = document.getElementById('scenesNavCountBadge');
+    if (countBadge) {
+      const n = Array.isArray(state.scenes) ? state.scenes.length : 0;
+      countBadge.textContent = `${n} Sahne`;
+    }
     const emptyBox = document.getElementById('scenesEmptyState');
     const wfBox = document.getElementById('emptyWireframeMonitors');
     const listBox = document.getElementById('scenesListContainer');
@@ -3341,8 +3304,14 @@
     const placeholder = document.getElementById('remotePlaceholder');
     const canvas = getRemoteCanvas();
     const fpsBadge = document.getElementById('remoteFpsBadge');
+    const toggleBtn = document.getElementById('toggleStreamHeaderBtn');
 
-    if (state.hasReceivedFrameOnce) {
+    if (toggleBtn) {
+      toggleBtn.textContent = state.isStreaming ? 'Ekranı Kapat' : 'Ekranı Aç';
+      toggleBtn.classList.toggle('is-live', Boolean(state.isStreaming));
+    }
+
+    if (state.isStreaming && state.hasReceivedFrameOnce) {
       if (placeholder) placeholder.classList.add('hidden');
       if (canvas) canvas.classList.remove('hidden');
     } else if (!state.isStreaming) {
@@ -3351,8 +3320,7 @@
     }
 
     if (!state.isStreaming && fpsBadge) {
-      const modeTxt = state.remoteInputMode === 'trackpad' ? 'FARE' : 'DOKUNMATİK';
-      fpsBadge.textContent = `${modeTxt} · HAZIR`;
+      fpsBadge.textContent = 'TRACKPAD · HAZIR';
     }
   }
 
@@ -3369,6 +3337,7 @@
     try {
       // Mark streaming before the reply so the first frames (which can beat the reply) are painted
       state.isStreaming = true;
+      updateStreamUiState();
       const video = await detectVideoSupport();
       await sendCommand('start_stream', {
         protocol: 2,
@@ -3399,6 +3368,7 @@
       await setLeftButtonHold(false);
     }
     state.isStreaming = false;
+    state.hasReceivedFrameOnce = false;
     remoteRender.queue = [];
     resetVideoDecoder();
     updateStreamUiState();
@@ -5062,10 +5032,11 @@
       if (!w.hotspot.supported) {
         hsSub.textContent = 'Desteklenmiyor';
       } else if (w.hotspot.enabled) {
+        const ssidPart = w.hotspot.ssid ? ` (${w.hotspot.ssid})` : '';
         hsSub.textContent =
           typeof w.hotspot.clients === 'number' && w.hotspot.clients > 0
-            ? `Açık · ${w.hotspot.clients} cihaz bağlı`
-            : 'Açık · Paylaşımda';
+            ? `Açık${ssidPart} · ${w.hotspot.clients} cihaz bağlı`
+            : `Açık${ssidPart} · Paylaşımda`;
       } else {
         hsSub.textContent = 'Kapalı';
       }
@@ -5150,51 +5121,6 @@
     } catch (err) {
       if (listEl) {
         listEl.innerHTML = `<div class="sub-panel"><p class="section-subtitle">Wi-Fi taraması başarısız: ${escapeHtml(err.message)}</p></div>`;
-      }
-    }
-  }
-
-  // LIVE MINI TASK MANAGER ENGINE
-  async function openTaskManagerModal() {
-    triggerHaptic(10);
-    openModal('taskManagerModal');
-    await loadPcProcessesList();
-  }
-
-  async function loadPcProcessesList() {
-    const listEl = document.getElementById('processesListContainer');
-    if (listEl) {
-      listEl.innerHTML = `<div class="sub-panel"><p class="section-subtitle">Çalışan süreçler yükleniyor...</p></div>`;
-    }
-    try {
-      const res = await sendCommand('system_control', { action: 'get_processes' }, 8000);
-      const procs = res && Array.isArray(res.processes) ? res.processes : [];
-      state.pcProcessesList = procs;
-      if (!listEl) return;
-      if (!procs.length) {
-        listEl.innerHTML = `<div class="sub-panel"><p class="section-subtitle">Süreç listesi alınamadı.</p></div>`;
-        return;
-      }
-      listEl.innerHTML = procs
-        .map((p) => {
-          const sub = p.title ? `${p.title} · PID ${p.pid}` : `PID ${p.pid}`;
-          return `
-            <div class="process-item-row">
-              <div class="process-item-meta">
-                <span class="process-item-name">${escapeHtml(p.name)}</span>
-                <span class="process-item-sub">${escapeHtml(sub)}</span>
-              </div>
-              <div class="process-item-right">
-                <span class="process-ram-pill">${escapeHtml(String(p.memMb ?? p.memoryMb ?? 0))} MB</span>
-                <button type="button" class="btn-danger-outline btn-compact" data-kill-pid="${p.pid}" data-kill-name="${escapeHtml(p.name)}">Sonlandır</button>
-              </div>
-            </div>
-          `;
-        })
-        .join('');
-    } catch (err) {
-      if (listEl) {
-        listEl.innerHTML = `<div class="sub-panel"><p class="section-subtitle">Süreçler alınamadı: ${escapeHtml(err.message)}</p></div>`;
       }
     }
   }
@@ -5775,18 +5701,18 @@
     viewport.addEventListener(
       'touchstart',
       (e) => {
-        if (e.target.closest('.remote-floating-hud') || e.target.closest('.remote-scroll-strip') || e.target.closest('.remote-placeholder') || e.target.closest('.remote-overlay-badges')) {
+        if (e.target.closest('.remote-floating-hud') || e.target.closest('.remote-scroll-strip') || e.target.closest('#startStreamBtn') || e.target.closest('.remote-overlay-badges')) {
           return;
         }
-        if (!state.isStreaming) return;
         e.preventDefault();
+        const effectiveMode = state.isStreaming ? state.remoteInputMode : 'trackpad';
 
         touchCount = e.touches.length;
         clearHoldTimer();
 
         if (touchCount === 2) {
           // Second finger = zoom/pan the phone view: the first finger must not keep pressing on the PC
-          if (state.remoteInputMode === 'direct') endTouchContact('cancel');
+          if (effectiveMode === 'direct') endTouchContact('cancel');
           const dx = e.touches[0].clientX - e.touches[1].clientX;
           const dy = e.touches[0].clientY - e.touches[1].clientY;
           pinchStartDist = Math.hypot(dx, dy);
@@ -5819,7 +5745,7 @@
           autoHoldTriggered = false;
           directDragActive = false;
 
-          if (state.remoteInputMode === 'trackpad') {
+          if (effectiveMode === 'trackpad') {
             // Long-press (holding finger still for 360ms) triggers Right Click in Mouse mode too!
             holdTimer = setTimeout(() => {
               if (totalMovedPx < 10 && !state.isLeftButtonHeld) {
@@ -5852,11 +5778,11 @@
     viewport.addEventListener(
       'touchmove',
       (e) => {
-        if (e.target.closest('.remote-floating-hud') || e.target.closest('.remote-scroll-strip') || e.target.closest('.remote-placeholder') || e.target.closest('.remote-overlay-badges')) {
+        if (e.target.closest('.remote-floating-hud') || e.target.closest('.remote-scroll-strip') || e.target.closest('#startStreamBtn') || e.target.closest('.remote-overlay-badges')) {
           return;
         }
-        if (!state.isStreaming) return;
         e.preventDefault();
+        const effectiveMode = state.isStreaming ? state.remoteInputMode : 'trackpad';
 
         // 2-Finger Pinch-to-Zoom (anchored to pinch focal point!) OR 2-Finger Scroll
         if (e.touches.length === 2) {
@@ -5867,7 +5793,7 @@
           const avgX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
           const avgY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
 
-          if (Math.abs(dist - pinchStartDist) > 14) {
+          if (state.isStreaming && Math.abs(dist - pinchStartDist) > 14) {
             twoFingerMoved = true;
             const nextZoom = Math.max(1.0, Math.min(3.5, pinchStartZoom * (dist / Math.max(1, pinchStartDist))));
             const zoomRatio = nextZoom / Math.max(1.0, pinchStartZoom);
@@ -5881,7 +5807,7 @@
             state.panX = curFocalX - (pinchFocalOffsetX - pinchStartPanX) * zoomRatio;
             state.panY = curFocalY - (pinchFocalOffsetY - pinchStartPanY) * zoomRatio;
             applyStageZoomAndPan();
-          } else if (state.remoteInputMode === 'direct') {
+          } else if (effectiveMode === 'direct') {
             // Touch mode scrolls with one finger, so two fingers move the zoomed phone view around
             if (state.zoomScale > 1.02 && (Math.abs(avgX - twoFingerLastX) > 2 || Math.abs(avgY - twoFingerLastY) > 2)) {
               twoFingerMoved = true;
@@ -5912,7 +5838,7 @@
             clearHoldTimer();
           }
 
-          if (state.remoteInputMode === 'trackpad') {
+          if (effectiveMode === 'trackpad') {
             // Sub-pixel relative hardware mouse movement for zero-stutter 60+ FPS cursor control
             const boxW = Math.max(240, screenImg.clientWidth || viewport.clientWidth || 340);
             const boxH = Math.max(150, screenImg.clientHeight || viewport.clientHeight || 220);
@@ -5930,7 +5856,7 @@
             state.cursorNormY = Math.max(0, Math.min(1, state.cursorNormY + (dy * sens) / boxH));
             noteLocalCursorMove();
 
-            if (state.zoomScale > 1.02) {
+            if (state.isStreaming && state.zoomScale > 1.02) {
               state.panX -= dx * 0.45;
               state.panY -= dy * 0.45;
               applyStageZoomAndPan();
@@ -5970,14 +5896,14 @@
     viewport.addEventListener(
       'touchend',
       (e) => {
-        if (!state.isStreaming) return;
         clearHoldTimer();
+        const effectiveMode = state.isStreaming ? state.remoteInputMode : 'trackpad';
 
         // 2-Finger Tap = Right Click at cursor!
         if (touchCount === 2 && e.touches.length === 0) {
           if (!twoFingerMoved) {
             triggerHaptic(16);
-            if (state.remoteInputMode === 'trackpad') {
+            if (effectiveMode === 'trackpad') {
               sendFastInput({ type: 'mouse_click', button: 'right' });
             } else {
               sendFastInput({
@@ -5993,7 +5919,7 @@
           return;
         }
 
-        if (state.remoteInputMode === 'direct' && e.touches.length === 0) {
+        if (effectiveMode === 'direct' && e.touches.length === 0) {
           if (touchContactDown) {
             const t = e.changedTouches && e.changedTouches[0];
             if (t) {
@@ -6007,7 +5933,7 @@
           return;
         }
 
-        if (touchCount === 1 && e.touches.length === 0 && state.remoteInputMode === 'trackpad') {
+        if (touchCount === 1 && e.touches.length === 0 && effectiveMode === 'trackpad') {
           // Moves are sent at most every 12 ms; whatever accumulated since the last send would otherwise be lost and
           // the PC cursor would end a little short of where the phone shows it
           const stepX = Math.round(relAccX);
@@ -6027,7 +5953,7 @@
             return;
           }
 
-          if (directDragActive && state.remoteInputMode === 'direct') {
+          if (directDragActive && effectiveMode === 'direct') {
             setLeftButtonHold(false, Number(state.cursorNormX.toFixed(4)), Number(state.cursorNormY.toFixed(4)));
             directDragActive = false;
             touchCount = 0;
@@ -6035,14 +5961,14 @@
           }
 
           // Tap without moving = Left Click (or Double Click if tapped twice fast!)
-          const maxTapMove = state.remoteInputMode === 'direct' ? 16 : 11;
+          const maxTapMove = effectiveMode === 'direct' ? 16 : 11;
           if (totalMovedPx < maxTapMove) {
             const now = performance.now();
             const isDouble = now - lastTapTs < 310;
             lastTapTs = isDouble ? 0 : now;
 
             triggerHaptic(10);
-            if (state.remoteInputMode === 'trackpad') {
+            if (effectiveMode === 'trackpad') {
               sendFastInput({
                 type: 'mouse_click',
                 button: 'left',
@@ -6185,12 +6111,13 @@
     });
   }
 
-  // HORIZONTAL SWIPE PAGER ENGINE ACROSS ALL 5 WORKSPACE TABS
+  // HORIZONTAL SWIPE PAGER ENGINE ACROSS ALL 4 WORKSPACE TABS
   function bindWorkspaceHorizontalSwipeEngine() {
     const workspaceEl = document.getElementById('view-connected-workspace');
     const trackEl = document.getElementById('workspaceTabsTrack');
     const indicatorEl = document.getElementById('navActiveIndicator');
-    if (!workspaceEl || !trackEl) return;
+    const swipeSurfaceEl = document.getElementById('mainViewport') || workspaceEl;
+    if (!workspaceEl || !trackEl || !swipeSurfaceEl) return;
 
     let tracking = false;
     let axisLocked = null; // 'x' | 'y' | null
@@ -6200,10 +6127,10 @@
     let startTime = 0;
     let startTabIdx = 0;
 
-    workspaceEl.addEventListener(
+    swipeSurfaceEl.addEventListener(
       'touchstart',
       (e) => {
-        if (e.touches.length !== 1) {
+        if (workspaceEl.classList.contains('hidden') || e.touches.length !== 1) {
           tracking = false;
           return;
         }
@@ -6211,9 +6138,9 @@
           tracking = false;
           return;
         }
-        // Do not hijack touch inside live Remote Desktop viewport while streaming or range sliders / horizontal pills
+        // Do not hijack touch inside the interactive Remote Desktop / Trackpad viewport or range sliders / horizontal pills
         if (
-          (state.activeTab === 'tab-remote' && state.isStreaming && e.target.closest('#remoteViewportBox')) ||
+          e.target.closest('#remoteViewportBox') ||
           e.target.closest('input[type="range"]') ||
           e.target.closest('.monitor-pill-row')
         ) {
@@ -6233,7 +6160,7 @@
       { passive: true }
     );
 
-    workspaceEl.addEventListener(
+    swipeSurfaceEl.addEventListener(
       'touchmove',
       (e) => {
         if (!tracking || e.touches.length !== 1) return;
@@ -6303,8 +6230,8 @@
       axisLocked = null;
     };
 
-    workspaceEl.addEventListener('touchend', finishSwipe, { passive: true });
-    workspaceEl.addEventListener('touchcancel', finishSwipe, { passive: true });
+    swipeSurfaceEl.addEventListener('touchend', finishSwipe, { passive: true });
+    swipeSurfaceEl.addEventListener('touchcancel', finishSwipe, { passive: true });
   }
 
   // HORIZONTAL SWIPE PAGER ENGINE FOR DEVICE HUB (CİHAZLAR <-> AYARLAR)
@@ -6528,7 +6455,7 @@
     const installApkBtn = document.getElementById('btnInstallAndroidUpdate');
     const installPcBtn = document.getElementById('btnInstallPcUpdate');
 
-    let currentAppVer = '2.17.0';
+    let currentAppVer = '2.18.0';
     try {
       if (window.TahaNative && typeof window.TahaNative.getAppVersion === 'function') {
         const nv = window.TahaNative.getAppVersion();
@@ -8942,45 +8869,44 @@
       });
     }
 
-    // TASK MANAGER MODAL
-    const openTaskManagerModalBtn = document.getElementById('openTaskManagerModalBtn');
-    if (openTaskManagerModalBtn) {
-      openTaskManagerModalBtn.addEventListener('click', openTaskManagerModal);
-    }
-
-    const refreshProcessesModalBtn = document.getElementById('refreshProcessesModalBtn');
-    if (refreshProcessesModalBtn) {
-      refreshProcessesModalBtn.addEventListener('click', () => {
+    // SCENES MANAGER MODAL (FROM HIZLI ERİŞİM)
+    const openScenesManagerModalBtn = document.getElementById('openScenesManagerModalBtn');
+    if (openScenesManagerModalBtn) {
+      openScenesManagerModalBtn.addEventListener('click', () => {
         triggerHaptic(10);
-        loadPcProcessesList();
+        renderScenesList();
+        openModal('scenesManagerModal');
       });
     }
 
-    const closeTaskManagerModalBtn = document.getElementById('closeTaskManagerModalBtn');
-    if (closeTaskManagerModalBtn) {
-      closeTaskManagerModalBtn.addEventListener('click', () => closeModal('taskManagerModal'));
+    const closeScenesManagerModalBtn = document.getElementById('closeScenesManagerModalBtn');
+    if (closeScenesManagerModalBtn) {
+      closeScenesManagerModalBtn.addEventListener('click', () => {
+        closeModal('scenesManagerModal');
+      });
     }
 
-    const processesListContainer = document.getElementById('processesListContainer');
-    if (processesListContainer) {
-      processesListContainer.addEventListener('click', async (e) => {
-        const killBtn = e.target.closest('[data-kill-pid]');
-        if (!killBtn) return;
-        triggerHaptic(14);
-        const pid = Number(killBtn.getAttribute('data-kill-pid'));
-        const name = killBtn.getAttribute('data-kill-name') || String(pid);
-        killBtn.disabled = true;
-        killBtn.textContent = '...';
-        try {
-          await sendCommand('system_control', { action: 'kill_process', pid }, 7000);
-          logAuditEvent('system', `Süreç sonlandırıldı: ${name} (PID ${pid})`);
-          showToast(`${name} sonlandırıldı`);
-          await loadPcProcessesList();
-        } catch (err) {
-          showToast(err.message || 'Süreç sonlandırılamadı');
-          killBtn.disabled = false;
-          killBtn.textContent = 'Sonlandır';
+    // REMOTE STREAM TOGGLE & HARDWARE MOUSE BUTTONS
+    const toggleStreamHeaderBtn = document.getElementById('toggleStreamHeaderBtn');
+    if (toggleStreamHeaderBtn) {
+      toggleStreamHeaderBtn.addEventListener('click', () => {
+        triggerHaptic(12);
+        if (state.isStreaming) {
+          stopRemoteStream();
+        } else {
+          startRemoteStream();
         }
+      });
+    }
+
+    const trackpadMouseButtonsRow = document.getElementById('trackpadMouseButtonsRow');
+    if (trackpadMouseButtonsRow) {
+      trackpadMouseButtonsRow.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-mouse-btn]');
+        if (!btn) return;
+        const mouseBtn = btn.getAttribute('data-mouse-btn') || 'left';
+        triggerHaptic(12);
+        sendFastInput({ type: 'mouse_click', button: mouseBtn });
       });
     }
 
